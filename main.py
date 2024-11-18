@@ -19,7 +19,7 @@ app.add_middleware(
 
 # 각 도메인의 라우터를 등록 예시
 # app.include_router(my_page_router.router, prefix="/api/mypage", tags=["mypage"])
-app.include_router(apartments_router, prefix="/api", tags=["apartments"])
+# app.include_router(apartments_router, prefix="/api", tags=["apartments"])
 
 
 @app.get("/")
