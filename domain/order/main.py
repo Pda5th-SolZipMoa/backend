@@ -90,21 +90,37 @@ async def submit_buy_order(order: BuyOrderRequest, property_id: int):
 
         # 3. Redis 호가창 업데이트
         redis_key = f"order_book:{property_id}"
-        existing_buy_orders = redis_client.hget(redis_key, "buy")
+        existing_order_book = redis_client.hget(redis_key, "order_book")
 
-        if existing_buy_orders:
-            buy_orders = eval(existing_buy_orders)  # 문자열 -> Python 객체
+        # Redis 데이터 처리
+        if existing_order_book:
+            try:
+                order_book = json.loads(existing_order_book)  # JSON으로 변환
+                if not isinstance(order_book, dict) or "buy" not in order_book or "sell" not in order_book:
+                    raise ValueError("Redis 데이터 구조가 올바르지 않습니다.")  # 강제 오류 발생
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=500, detail="Redis 데이터 디코딩 실패.")
         else:
-            buy_orders = {}
+            # 새로운 호가창 생성
+            order_book = {"buy": {}, "sell": {}}
 
+        # 데이터 추가
+        buy_orders = order_book["buy"]
         if str(order.price_per_token) not in buy_orders:
             buy_orders[str(order.price_per_token)] = []
 
-        buy_orders[str(order.price_per_token)].append({"order_id": order_id, "quantity": order.quantity})
-        redis_client.hset(redis_key, "buy", str(buy_orders))
+        buy_orders[str(order.price_per_token)].append({
+            "order_id": order_id,
+            "quantity": order.quantity
+        })
+
+        # Redis에 다시 저장
+        redis_client.hset(redis_key, "order_book", json.dumps(order_book))
 
     except pymysql.MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB 에러: {e}")
+    except ValueError as ve:
+        raise HTTPException(status_code=500, detail=str(ve))
     finally:
         cursor.close()
         conn.close()
@@ -144,18 +160,30 @@ async def submit_sell_order(order: SellOrderRequest, property_id: int):
 
         # 3. Redis 호가창 업데이트
         redis_key = f"order_book:{property_id}"
-        existing_sell_orders = redis_client.hget(redis_key, "sell")
+        existing_order_book = redis_client.hget(redis_key, "order_book")  # HGET 사용
 
-        if existing_sell_orders:
-            sell_orders = eval(existing_sell_orders)  # 문자열 -> Python 객체
+        if existing_order_book:
+            try:
+                order_book = json.loads(existing_order_book)  # JSON 디코딩
+                if not isinstance(order_book, dict) or "buy" not in order_book or "sell" not in order_book:
+                    raise ValueError("Redis 데이터 구조가 올바르지 않습니다.")
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=500, detail="Redis 데이터 디코딩 실패.")
         else:
-            sell_orders = {}
+            order_book = {"buy": {}, "sell": {}}  # 빈 order_book 초기화
 
+        # 데이터 추가
+        sell_orders = order_book["sell"]
         if str(order.price_per_token) not in sell_orders:
             sell_orders[str(order.price_per_token)] = []
 
-        sell_orders[str(order.price_per_token)].append({"order_id": order_id, "quantity": order.quantity})
-        redis_client.hset(redis_key, "sell", str(sell_orders))
+        sell_orders[str(order.price_per_token)].append({
+            "order_id": order_id,
+            "quantity": order.quantity
+        })
+
+        # Redis에 다시 저장
+        redis_client.hset(redis_key, "order_book", json.dumps(order_book))  # HSET 사용
 
     except pymysql.MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB 에러: {e}")
@@ -173,32 +201,28 @@ async def get_order_book(property_id: int):
     """
     redis_key = f"order_book:{property_id}"
 
-    # Redis에서 매수 및 매도 호가창 조회
-    buy_orders = redis_client.hget(redis_key, "buy")
-    sell_orders = redis_client.hget(redis_key, "sell")
+    # Redis에서 전체 order_book 조회
+    existing_order_book = redis_client.hget(redis_key, "order_book")  # HGET 사용
 
-    # 호가창이 없으면 빈 호가창 생성
-    if not buy_orders and not sell_orders:
-        redis_client.hset(redis_key, "sell", "[]")  # 빈 매도 호가창
-        redis_client.hset(redis_key, "buy", "[]")  # 빈 매수 호가창
+    if existing_order_book:
+        try:
+            order_book = json.loads(existing_order_book)  # JSON 디코딩
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="Redis 데이터 디코딩 실패.")
+    else:
+        # 데이터가 없으면 빈 order_book 생성
+        order_book = {"sell": {}, "buy": {}}
+        redis_client.hset(redis_key, "order_book", json.dumps(order_book))  # Redis에 저장
+
         return {
             "property_id": property_id,
-            "order_book": {
-                "sell": {},
-                "buy": {}
-            },
+            "order_book": order_book,
             "message": "Empty order book created."
         }
 
-    # 데이터를 구조화하여 반환
-    structured_order_book = {
-        "sell": eval(sell_orders) if sell_orders else {},
-        "buy": eval(buy_orders) if buy_orders else {}
-    }
-
     return {
         "property_id": property_id,
-        "order_book": structured_order_book
+        "order_book": order_book
     }
 
 if __name__ == "__main__":
