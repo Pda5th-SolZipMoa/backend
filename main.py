@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from domain.apartments.getApartments import router as apartments_router
-from domain.apartments.getBuildInfo import router as building_router
+# from domain.apartments.getApartments import router as apartments_router
+# from domain.apartments.getBuildInfo import router as building_router
 from domain.apartments.getTotalApartInfo import router as total_router
 
 import requests
