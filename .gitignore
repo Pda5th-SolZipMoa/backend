@@ -182,3 +182,7 @@ pyrightconfig.json
 .apartments
 .domain/apartments
 /domain/apartments/
+
+.test
+/test
+./test
