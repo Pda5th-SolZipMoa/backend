@@ -1,12 +1,12 @@
-from fastapi import FastAPI, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from contextlib import asynccontextmanager
 import pymysql
 import redis
-import jwt
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-import os
+import asyncio
 import json
+import os
+from pydantic import BaseModel
+from dotenv import load_dotenv
 
 # .env 파일 로드
 load_dotenv()
@@ -28,25 +28,91 @@ redis_client = redis.Redis(
     decode_responses=True
 )
 
-# JWT Secret Key
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-
 # FastAPI 앱 생성
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Application startup")
+    loop = asyncio.get_event_loop()
+    loop.create_task(redis_listener())
+    yield
+    print("Application shutdown")
 
-# CORS 설정
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(lifespan=lifespan)
 
-# Pydantic 모델
-class BuyOrderRequest(BaseModel):
-    quantity: int
-    price_per_token: int
+
+# WebSocket 연결 관리 클래스
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: dict[int, list[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, property_id: int):
+        await websocket.accept()
+        if property_id not in self.active_connections:
+            self.active_connections[property_id] = []
+        self.active_connections[property_id].append(websocket)
+        print(f"WebSocket 연결 성공: property_id={property_id}")
+
+    def disconnect(self, websocket: WebSocket, property_id: int):
+        if property_id in self.active_connections:
+            self.active_connections[property_id].remove(websocket)
+            if not self.active_connections[property_id]:
+                del self.active_connections[property_id]
+            print(f"WebSocket 연결 종료: property_id={property_id}")
+
+    async def broadcast(self, message: str, property_id: int):
+        if property_id in self.active_connections:
+            print(f"Broadcasting message to {len(self.active_connections[property_id])} clients for property_id {property_id}")
+            for connection in self.active_connections[property_id]:
+                try:
+                    await connection.send_text(message)
+                except Exception as e:
+                    print(f"Error sending message to WebSocket client: {e}")
+
+
+# WebSocket 연결 관리 인스턴스 생성
+manager = ConnectionManager()
+
+@app.websocket("/api/ws/orders/{property_id}")
+async def websocket_endpoint(websocket: WebSocket, property_id: int):
+    await manager.connect(websocket, property_id)
+    try:
+        while True:
+            data = await websocket.receive_text()  # WebSocket 연결 유지
+            print(f"Received WebSocket message from client: {data}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, property_id)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+
+
+# Redis Pub/Sub Listener
+async def redis_listener():
+    pubsub = redis_client.pubsub()
+    pubsub.subscribe("order_book_updates")
+    print("Redis listener started, subscribed to 'order_book_updates'")
+    try:
+        while True:
+            message = pubsub.get_message()
+            if message and message["type"] == "message":
+                data = json.loads(message["data"])
+                property_id = data.get("property_id")
+                print(f"Redis message received: {data}")
+                if property_id:
+                    await manager.broadcast(json.dumps(data), property_id)
+            await asyncio.sleep(0.01)  # Redis 메시지 폴링 간격
+    except Exception as e:
+        print(f"Redis listener error: {e}")
+
+
+# Redis 데이터 업데이트 및 Pub/Sub 메시지 발행
+def update_order_book_in_redis(property_id: int, order_book: dict):
+    redis_key = f"order_book:{property_id}"
+    redis_client.hset(redis_key, "order_book", json.dumps(order_book))
+
+    # Pub/Sub 메시지 발행
+    update_message = {"property_id": property_id, "order_book": order_book}
+    print(f"Publishing Redis message: {update_message}")
+    redis_client.publish("order_book_updates", json.dumps(update_message))
 
 # JWT 인증 함수
 def verify_jwt(token: str):
@@ -56,8 +122,20 @@ def verify_jwt(token: str):
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token")    
+    
+# Pydantic 모델
+class BuyOrderRequest(BaseModel):
+    quantity: int
+    price_per_token: int
 
+class SellOrderRequest(BaseModel):
+    quantity: int
+    price_per_token: int
+
+
+
+# 주문 제출 API (매수)
 @app.post("/api/orders/{property_id}/buy")
 async def submit_buy_order(order: BuyOrderRequest, property_id: int):
     # TODO: JWT에서 유저 ID 가져오기
@@ -69,7 +147,6 @@ async def submit_buy_order(order: BuyOrderRequest, property_id: int):
 
         # TODO: 1. 사용자 잔액 확인
         user_balance = 10000000
-
         total_cost = order.quantity * order.price_per_token
         if user_balance < total_cost:
             raise HTTPException(status_code=400, detail="유저 잔액 부족")
@@ -83,52 +160,28 @@ async def submit_buy_order(order: BuyOrderRequest, property_id: int):
             property_id, user_id, "buy", order.price_per_token, order.quantity, order.quantity, "normal"))
         conn.commit()
 
-        # 방금 삽입된 주문 ID 가져오기
         order_id = cursor.lastrowid
 
         # 3. Redis 호가창 업데이트
         redis_key = f"order_book:{property_id}"
         existing_order_book = redis_client.hget(redis_key, "order_book")
+        order_book = json.loads(existing_order_book) if existing_order_book else {"buy": {}, "sell": {}}
+        if str(order.price_per_token) not in order_book["buy"]:
+            order_book["buy"][str(order.price_per_token)] = []
+        order_book["buy"][str(order.price_per_token)].append({"order_id": order_id, "quantity": order.quantity})
 
-        # Redis 데이터 처리
-        if existing_order_book:
-            try:
-                order_book = json.loads(existing_order_book)  # JSON으로 변환
-                if not isinstance(order_book, dict) or "buy" not in order_book or "sell" not in order_book:
-                    raise ValueError("Redis 데이터 구조가 올바르지 않습니다.")  # 강제 오류 발생
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=500, detail="Redis 데이터 디코딩 실패.")
-        else:
-            # 새로운 호가창 생성
-            order_book = {"buy": {}, "sell": {}}
-
-        # 데이터 추가
-        buy_orders = order_book["buy"]
-        if str(order.price_per_token) not in buy_orders:
-            buy_orders[str(order.price_per_token)] = []
-
-        buy_orders[str(order.price_per_token)].append({
-            "order_id": order_id,
-            "quantity": order.quantity
-        })
-
-        # Redis에 다시 저장
-        redis_client.hset(redis_key, "order_book", json.dumps(order_book))
+        update_order_book_in_redis(property_id, order_book)
 
     except pymysql.MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB 에러: {e}")
-    except ValueError as ve:
-        raise HTTPException(status_code=500, detail=str(ve))
     finally:
         cursor.close()
         conn.close()
 
     return {"message": "매수 주문이 완료", "order_id": order_id}
 
-class SellOrderRequest(BaseModel):
-    quantity: int
-    price_per_token: int
 
+# 주문 제출 API (매도)
 @app.post("/api/orders/{property_id}/sell")
 async def submit_sell_order(order: SellOrderRequest, property_id: int):
     # TODO: JWT에서 유저 ID 가져오기
@@ -140,7 +193,6 @@ async def submit_sell_order(order: SellOrderRequest, property_id: int):
 
         # TODO: 1. 사용자의 보유 토큰 확인
         user_tokens = 10000000
-
         if user_tokens is None or user_tokens < order.quantity:
             raise HTTPException(status_code=400, detail="매도에 필요한 토큰량 부족")
 
@@ -153,35 +205,17 @@ async def submit_sell_order(order: SellOrderRequest, property_id: int):
             property_id, user_id, "sell", order.price_per_token, order.quantity, order.quantity, "normal"))
         conn.commit()
 
-        # 방금 삽입된 주문 ID 가져오기
         order_id = cursor.lastrowid
 
         # 3. Redis 호가창 업데이트
         redis_key = f"order_book:{property_id}"
-        existing_order_book = redis_client.hget(redis_key, "order_book")  # HGET 사용
+        existing_order_book = redis_client.hget(redis_key, "order_book")
+        order_book = json.loads(existing_order_book) if existing_order_book else {"buy": {}, "sell": {}}
+        if str(order.price_per_token) not in order_book["sell"]:
+            order_book["sell"][str(order.price_per_token)] = []
+        order_book["sell"][str(order.price_per_token)].append({"order_id": order_id, "quantity": order.quantity})
 
-        if existing_order_book:
-            try:
-                order_book = json.loads(existing_order_book)  # JSON 디코딩
-                if not isinstance(order_book, dict) or "buy" not in order_book or "sell" not in order_book:
-                    raise ValueError("Redis 데이터 구조가 올바르지 않습니다.")
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=500, detail="Redis 데이터 디코딩 실패.")
-        else:
-            order_book = {"buy": {}, "sell": {}}  # 빈 order_book 초기화
-
-        # 데이터 추가
-        sell_orders = order_book["sell"]
-        if str(order.price_per_token) not in sell_orders:
-            sell_orders[str(order.price_per_token)] = []
-
-        sell_orders[str(order.price_per_token)].append({
-            "order_id": order_id,
-            "quantity": order.quantity
-        })
-
-        # Redis에 다시 저장
-        redis_client.hset(redis_key, "order_book", json.dumps(order_book))  # HSET 사용
+        update_order_book_in_redis(property_id, order_book)
 
     except pymysql.MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB 에러: {e}")
@@ -191,12 +225,10 @@ async def submit_sell_order(order: SellOrderRequest, property_id: int):
 
     return {"message": "매도 주문이 완료", "order_id": order_id}
 
+
+# REST API: 호가창 데이터 조회
 @app.get("/api/orders/{property_id}")
 async def get_order_book(property_id: int):
-    """
-    특정 property_id의 호가창 데이터를 조회합니다.
-    데이터가 없으면 Redis에 빈 호가창 생성 후 반환.
-    """
     redis_key = f"order_book:{property_id}"
 
     # Redis에서 전체 order_book 조회
@@ -208,20 +240,11 @@ async def get_order_book(property_id: int):
         except json.JSONDecodeError:
             raise HTTPException(status_code=500, detail="Redis 데이터 디코딩 실패.")
     else:
-        # 데이터가 없으면 빈 order_book 생성
         order_book = {"sell": {}, "buy": {}}
         redis_client.hset(redis_key, "order_book", json.dumps(order_book))  # Redis에 저장
 
-        return {
-            "property_id": property_id,
-            "order_book": order_book,
-            "message": "Empty order book created."
-        }
+    return {"property_id": property_id, "order_book": order_book}
 
-    return {
-        "property_id": property_id,
-        "order_book": order_book
-    }
 
 if __name__ == "__main__":
     import uvicorn
