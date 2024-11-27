@@ -5,13 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 # from domain.apartments.getBuildInfo import router as building_router
 from domain.apartments.getTotalApartInfo import router as total_router
 from domain.apartments.saveForm import router as form_router
+from domain.user.login import router as auth_router
+
 
 import requests
 import os
 
 from pydantic import BaseModel
 app = FastAPI()
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,11 +28,18 @@ app.add_middleware(
 app.include_router(total_router,prefix="/api",tags=["apartments"])
 app.include_router(form_router,prefix="/api",tags=["apartments"])
 
+
+app.include_router(auth_router, prefix='/api',
+                   tags=['auth'])
+
+
 @app.get("/")
 async def root():
     return {"message": "Hello, FastAPI!"}
 
 # swagger http://127.0.0.1:8000/docs
+
+
 @app.get("/items/{item_id}")
 async def read_item(item_id: int, q: str = None):
     return {"item_id": item_id, "q": q}
