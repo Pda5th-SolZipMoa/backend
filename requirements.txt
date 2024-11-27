@@ -1,6 +1,7 @@
 annotated-types==0.7.0
 anyio==4.6.2.post1
 async-timeout==5.0.1
+asyncpg==0.30.0
 beautifulsoup4==4.12.3
 certifi==2024.8.30
 cffi==1.17.1
@@ -22,6 +23,7 @@ pydantic_core==2.23.4
 PyMySQL==1.1.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
+python-multipart==0.0.17
 pytz==2024.2
 redis==5.2.0
 requests==2.32.3
@@ -34,12 +36,5 @@ typing_extensions==4.12.2
 tzdata==2024.2
 urllib3==2.2.3
 uvicorn==0.32.0
-xmltodict==0.14.2
-async-timeout==5.0.1
-asyncpg==0.30.0
-cffi==1.17.1
-cryptography==43.0.3
-jwt==1.3.1
-pycparser==2.22
-redis==5.2.0
 websockets==14.1
+xmltodict==0.14.2

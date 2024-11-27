@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # from domain.apartments.getApartments import router as apartments_router
 # from domain.apartments.getBuildInfo import router as building_router
 from domain.apartments.getTotalApartInfo import router as total_router
+from domain.apartments.saveForm import router as form_router
 
 import requests
 import os
@@ -24,7 +25,7 @@ app.add_middleware(
 # app.include_router(my_page_router.router, prefix="/api/mypage", tags=["mypage"])
 
 app.include_router(total_router,prefix="/api",tags=["apartments"])
-
+app.include_router(form_router,prefix="/api",tags=["apartments"])
 
 @app.get("/")
 async def root():
