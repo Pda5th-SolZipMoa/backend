@@ -1,12 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+
 # from domain.apartments.getApartments import router as apartments_router
 # from domain.apartments.getBuildInfo import router as building_router
 from domain.apartments.getTotalApartInfo import router as total_router
 from domain.apartments.saveForm import router as form_router
 from domain.user.login import router as auth_router
-
+from domain.buildings.main import router as buildings_router
 
 import requests
 import os
@@ -24,9 +25,9 @@ app.add_middleware(
 
 # 각 도메인의 라우터를 등록 예시
 # app.include_router(my_page_router.router, prefix="/api/mypage", tags=["mypage"])
-
 app.include_router(total_router,prefix="/api",tags=["apartments"])
 app.include_router(form_router,prefix="/api",tags=["apartments"])
+app.include_router(buildings_router, prefix="/api", tags=["buildings"])
 
 
 app.include_router(auth_router, prefix='/api',
