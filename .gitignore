@@ -182,3 +182,5 @@ pyrightconfig.json
 .test
 /test
 ./test
+.test.*
+test/

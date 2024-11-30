@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # from domain.apartments.getBuildInfo import router as building_router
 from domain.apartments.getTotalApartInfo import router as total_router
 from domain.apartments.saveForm import router as form_router
+
 from domain.user.login import router as auth_router
 
 

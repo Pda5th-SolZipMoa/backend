@@ -4,8 +4,7 @@ from core.mysql_connector import get_db_connection
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from typing import List
 import shutil
-import os
-import requests
+import os,requests,json
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -67,125 +66,184 @@ def fetch_building_info(building_info: BuildingInfo):
 async def create_property(
         name: str = Form(...),
         token_supply: int = Form(...),
-        created_at: datetime = datetime.now(),  # Modified part
+        created_at: datetime = datetime.now(),
         price: int = Form(...),
         owner_id: int = 10,
         address: str = Form(...),
-        building_code: str = Form(None),
+        building_code: str = Form(...),
         platArea: str = Form(None),
         bcRat: str = Form(None),
         totArea: str = Form(None),
         vlRat: str = Form(None),
         lat: float = Form(None),
         lng: float = Form(None),
-        legalDocs: UploadFile = File(None),
-        legalNotice: bool = Form(...),
+        legalDocs: UploadFile = File(None),  # 위치 변경됨
+        legalNotice: bool = Form(...),       # 위치 변경됨
         images: List[UploadFile] = File([]),
+        detail_floor: int = Form(...),  # 필수로 변경
+        home_size: str = Form(...),
+        room_cnt: str = Form(...),
+        maintenance_cost: str = Form(...),
 ):
-    # Log received data
-    print("Name:", name)
-    print("Token Supply:", token_supply)
-    print("Created At:", created_at)
-    print("Price:", price)
-    print("Owner ID:", owner_id)
-    print("Address:", address)
-    print('BuildingCode:', building_code)
-    print("Latitude:", lat)
-    print("Longitude:", lng)
-    print("Legal Docs:", legalDocs.filename if legalDocs else "None")
-    print("Legal Notice:", legalNotice)
-    print("Images:", [image.filename for image in images])
-
     if not legalNotice:
         raise HTTPException(status_code=400, detail="이용 약관에 동의해야 합니다.")
 
-    if building_code:
-        try:
-            # Parse the building_code
-            sigunguCd = building_code[0:5]
-            bjdongCd = building_code[5:10]
-            platGbCd = building_code[10]
-            bun = building_code[11:15]
-            ji = building_code[15:19]
-
-            # Create BuildingInfo object
-            building_info = BuildingInfo(
-                sigunguCd=sigunguCd,
-                bjdongCd=bjdongCd,
-                platGbCd=int(platGbCd),
-                bun=bun,
-                ji=ji
-            )
-
-            # Fetch building info
-            building_summary = fetch_building_info(building_info)
-
-            # Map the values
-            platArea = building_summary.get('대지면적')
-            bcRat = building_summary.get('건폐율')
-            totArea = building_summary.get('연면적')
-            vlRat = building_summary.get('용적률')
-
-            # Log fetched data
-            print("Fetched platArea:", platArea)
-            print("Fetched bcRat:", bcRat)
-            print("Fetched totArea:", totArea)
-            print("Fetched vlRat:", vlRat)
-
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to fetch building info: {str(e)}")
-
-    # Ensure that the required fields are not None
-    if not all([platArea, bcRat, totArea, vlRat]):
-        raise HTTPException(status_code=400, detail="건물 정보를 가져올 수 없습니다.")
-
-    # Process legalDocs if provided
-    if legalDocs:
-        legalDocs_filename = f"legalDocs_{name}_{legalDocs.filename}"
-        legalDocs_path = os.path.join(IMAGE_DIR, legalDocs_filename)
-        with open(legalDocs_path, "wb+") as file_object:
-            shutil.copyfileobj(legalDocs.file, file_object)
-    else:
-        legalDocs_path = None
+    if not building_code:
+        raise HTTPException(status_code=400, detail="building_code는 필수입니다.")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
 
         try:
-            # Insert data into Properties table
-            insert_property_query = """
-                INSERT INTO Properties (name, token_supply, created_at, price, owner_id, address, building_code, platArea, bcRat, totArea, vlRat, lat, lng, legalDocs, legalNotice)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(insert_property_query, (
-                name, token_supply, created_at, price, owner_id, address,
-                building_code, platArea, bcRat, totArea, vlRat, lat, lng, legalDocs_path, int(legalNotice)
-            ))
+            # Properties 테이블에서 building_code 중복 확인
+            select_query = "SELECT id FROM Properties WHERE building_code = %s"
+            cursor.execute(select_query, (building_code,))
+            result = cursor.fetchone()
 
-            property_id = cursor.lastrowid
+            if result:
+                # 이미 존재하는 building_code일 경우
+                property_id = result['id']
+                print(f"기존 property_id: {property_id}")
+            else:
+                # 존재하지 않는 building_code일 경우 Properties에 데이터 삽입
+                insert_property_query = """
+                    INSERT INTO Properties (name, token_supply, created_at, price, owner_id, address, building_code, platArea, bcRat, totArea, vlRat, lat, lng)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(insert_property_query, (
+                    name, token_supply, created_at, price, owner_id, address,
+                    building_code, platArea, bcRat, totArea, vlRat, lat, lng
+                ))
+                property_id = cursor.lastrowid
+                print(f"새로운 property_id: {property_id}")
 
-            # Process images and insert data into Property_Photos table
+            # 이미지 처리: 여러 이미지 저장
+            image_urls = []
             for image in images:
                 if image:
-                    file_extension = os.path.splitext(image.filename)[1]
-                    file_name = f"property_{property_id}_{os.path.basename(image.filename)}"  # Modified part
+                    file_name = f"property_{property_id}_{os.path.basename(image.filename)}"
                     file_path = os.path.join(IMAGE_DIR, file_name)
 
                     with open(file_path, "wb+") as file_object:
                         shutil.copyfileobj(image.file, file_object)
 
-                    insert_photo_query = """
-                        INSERT INTO Property_Photos (property_id, url)
-                        VALUES (%s, %s)
-                    """
-                    cursor.execute(insert_photo_query, (property_id, file_path))
+                    image_urls.append(file_path)  # 이미지 경로를 리스트에 추가
+
+            # 이미지 URL 리스트를 JSON 문자열로 변환
+            home_photos_json = json.dumps(image_urls, ensure_ascii=False)
+
+            # legalDocs 처리
+            legalDocs_path = None
+            if legalDocs:
+                legalDocs_filename = f"legalDocs_{property_id}_{os.path.basename(legalDocs.filename)}"
+                legalDocs_path = os.path.join(IMAGE_DIR, legalDocs_filename)
+                with open(legalDocs_path, "wb+") as file_object:
+                    shutil.copyfileobj(legalDocs.file, file_object)
+
+            # Property_Detail 테이블에 데이터 삽입
+            insert_detail_query = """
+                INSERT INTO Property_Detail (property_id, detail_floor, home_size, room_cnt, maintenance_cost, home_photos, legalDocs, legalNotice)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(insert_detail_query, (
+                property_id, detail_floor, home_size, room_cnt, maintenance_cost, home_photos_json, legalDocs_path, int(legalNotice)
+            ))
 
             conn.commit()
-            return {"message": "Property token created successfully", "property_id": property_id}
+            return {"message": "데이터가 성공적으로 저장되었습니다.", "property_id": property_id}
 
         except Exception as e:
             conn.rollback()
-            raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"서버 오류: {str(e)}")
 
         finally:
             cursor.close()
+#수정본
+# @router.post("/apartments/token")
+# async def create_property(
+#         name: str = Form(...),
+#         token_supply: int = Form(...),
+#         created_at: datetime = datetime.now(),
+#         price: int = Form(...),
+#         owner_id: int = 10,
+#         address: str = Form(...),
+#         building_code: str = Form(None),
+#         platArea: str = Form(None),
+#         bcRat: str = Form(None),
+#         totArea: str = Form(None),
+#         vlRat: str = Form(None),
+#         lat: float = Form(None),
+#         lng: float = Form(None),
+#         legalDocs: UploadFile = File(None),
+#         legalNotice: bool = Form(...),
+#         images: List[UploadFile] = File([]),
+#         detail_floor: int = Form(None),  # 추가된 필드
+#         home_size: str = Form(None),
+#         room_cnt: str = Form(None),
+#         maintenance_cost: str = Form(None),
+# ):
+#     # `building_code`가 있는 경우
+#     if not building_code:
+#         raise HTTPException(status_code=400, detail="building_code는 필수입니다.")
+#
+#     with get_db_connection() as conn:
+#         cursor = conn.cursor()
+#
+#         try:
+#             # `Properties` 테이블에서 building_code 중복 여부 확인
+#             select_query = "SELECT id FROM Properties WHERE building_code = %s"
+#             cursor.execute(select_query, (building_code,))
+#             result = cursor.fetchone()
+#             print(result['id'])
+#             if result:
+#                 # 이미 존재하는 building_code일 경우
+#                 property_id = result['id']
+#                 print(f"기존 property_id: {property_id}")
+#             else:
+#                 # 존재하지 않는 building_code일 경우 `Properties`에 데이터 삽입
+#                 insert_property_query = """
+#                     INSERT INTO Properties (name, token_supply, created_at, price, owner_id, address, building_code, platArea, bcRat, totArea, vlRat, lat, lng, legalDocs, legalNotice)
+#                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+#                 """
+#                 cursor.execute(insert_property_query, (
+#                     name, token_supply, created_at, price, owner_id, address,
+#                     building_code, platArea, bcRat, totArea, vlRat, lat, lng, None, int(legalNotice)
+#                 ))
+#                 property_id = cursor.lastrowid
+#                 print(f"새로운 property_id: {property_id}")
+#
+#                 # 이미지 삽입 처리
+#                 for image in images:
+#                     if image:
+#                         file_name = f"property_{property_id}_{os.path.basename(image.filename)}"
+#                         file_path = os.path.join(IMAGE_DIR, file_name)
+#
+#                         with open(file_path, "wb+") as file_object:
+#                             shutil.copyfileobj(image.file, file_object)
+#
+#                         insert_photo_query = """
+#                             INSERT INTO Property_Photos (property_id, url)
+#                             VALUES (%s, %s)
+#                         """
+#                         cursor.execute(insert_photo_query, (property_id, file_path))
+#
+#             # `property_detail_info` 테이블에 데이터 삽입
+#             insert_detail_query = """
+#                 INSERT INTO Property_Detail (property_id, detail_floor, home_size, room_cnt, maintenance_cost)
+#                 VALUES (%s, %s, %s, %s, %s)
+#             """
+#             cursor.execute(insert_detail_query, (
+#                 property_id, detail_floor, home_size, room_cnt, maintenance_cost
+#             ))
+#
+#             conn.commit()
+#             return {"message": "데이터가 성공적으로 저장되었습니다.", "property_id": property_id}
+#
+#         except Exception as e:
+#             conn.rollback()
+#             raise HTTPException(status_code=500, detail=f"서버 오류: {str(e)}")
+#
+#         finally:
+#             cursor.close()
+
+
