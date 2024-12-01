@@ -7,8 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from domain.apartments.getTotalApartInfo import router as total_router
 from domain.apartments.saveForm import router as form_router
 from domain.user.login import router as auth_router
+from domain.order.main import router as order_router
+from domain.order.order_socket import router as order_socket_router
+from domain.order.order_matching_scheduler import periodic_matching
 from domain.buildings.main import router as buildings_router
-
+from core.redis import redis_listener
+import asyncio
 import requests
 import os
 
@@ -32,6 +36,19 @@ app.include_router(buildings_router, prefix="/api", tags=["buildings"])
 
 app.include_router(auth_router, prefix='/api',
                    tags=['auth'])
+
+app.include_router(order_router, prefix="/api/orders", tags=["order"])
+app.include_router(order_socket_router, prefix="/api/ws/orders", tags=["order_socket"])
+
+
+# 애플리케이션 시작 시 Redis Listener와 스케줄러 실행
+@app.on_event("startup")
+async def startup_event():
+    loop = asyncio.get_event_loop()
+    # Redis Listener 실행
+    loop.create_task(redis_listener())
+    # 스케줄러 실행
+    loop.create_task(periodic_matching(interval=300))
 
 
 @app.get("/")
