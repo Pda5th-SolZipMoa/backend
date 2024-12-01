@@ -11,6 +11,7 @@ from domain.order.main import router as order_router
 from domain.order.order_socket import router as order_socket_router
 from domain.order.order_matching_scheduler import periodic_matching
 from domain.buildings.main import router as buildings_router
+from domain.properties.property_history import router as property_history_router
 from core.redis import redis_listener
 import asyncio
 import requests
@@ -40,6 +41,7 @@ app.include_router(auth_router, prefix='/api',
 app.include_router(order_router, prefix="/api/orders", tags=["order"])
 app.include_router(order_socket_router, prefix="/api/ws/orders", tags=["order_socket"])
 
+app.include_router(property_history_router, prefix="/api/properties", tags=["property_history_router"])
 
 # 애플리케이션 시작 시 Redis Listener와 스케줄러 실행
 @app.on_event("startup")
