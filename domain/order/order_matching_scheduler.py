@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 import pymysql
 from core.settings import REDIS_CLIENT, DB_CONFIG
+from core.redis import update_order_book_in_redis
 
 def match_orders(property_id: int):
     # 1. 호가창 정보 가져오기
@@ -206,6 +207,9 @@ def match_orders(property_id: int):
             VALUES (NOW(), %s, %s, %s)
         """, (max_traded_price, max_quantity, property_id))
         conn.commit()
+
+        # 7. Redis Pub/Sub 메시지 발행
+        update_order_book_in_redis(property_id, order_book)
 
     except pymysql.MySQLError as e:
         print(f"[{datetime.now()}] DB 에러: {e}")
