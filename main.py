@@ -8,6 +8,7 @@ from domain.apartments.getTotalApartInfo import router as total_router
 from domain.apartments.saveForm import router as form_router
 from domain.user.login import router as auth_router
 from domain.order.main import router as order_router
+from domain.order.order_cancel import router as order_cancel_router
 from domain.order.order_socket import router as order_socket_router
 from domain.order.order_matching_scheduler import periodic_matching
 from domain.buildings.main import router as buildings_router
@@ -38,6 +39,7 @@ app.include_router(auth_router, prefix='/api',
                    tags=['auth'])
 
 app.include_router(order_router, prefix="/api/orders", tags=["order"])
+app.include_router(order_cancel_router, prefix="/api/orders", tags=["order_cancel"])
 app.include_router(order_socket_router, prefix="/api/ws/orders", tags=["order_socket"])
 
 
