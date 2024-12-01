@@ -7,9 +7,9 @@ from domain.apartments.getTotalApartInfo import router as total_router
 from domain.apartments.saveForm import router as form_router
 from domain.user.login import router as auth_router
 from domain.order.main import router as order_router
-from domain.order.main import redis_listener
 from domain.order.order_socket import router as order_socket_router
 from domain.order.order_matching_scheduler import periodic_matching
+from core.redis import redis_listener
 import asyncio
 import requests
 import os

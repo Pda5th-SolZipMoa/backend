@@ -1,9 +1,8 @@
-from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, HTTPException
-from contextlib import asynccontextmanager
+from fastapi import APIRouter, HTTPException, Request
 from core.settings import DB_CONFIG, REDIS_CLIENT
-from core.websockets import manager
+from core.jwt import extract_user_id
+from core.redis import update_order_book_in_redis
 import pymysql
-import asyncio
 import json
 from pydantic import BaseModel
 
@@ -21,26 +20,52 @@ class SellOrderRequest(BaseModel):
 
 # 주문 제출 API (매수)
 @router.post("/{property_id}/buy")
-async def submit_buy_order(order: BuyOrderRequest, property_id: int):
-    # TODO: JWT에서 유저 ID 가져오기
-    user_id = 1
+async def submit_buy_order(
+        order: BuyOrderRequest,
+        property_id: int,
+        request: Request
+):
+    # 쿠키에서 JWT 가져오기
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="쿠키에 JWT없음")
+
+    # JWT에서 유저 ID 가져오기
+    try:
+        user_id = extract_user_id(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=f"토큰 유효 X {e}")
+
     try:
         conn = pymysql.connect(**DB_CONFIG)
         cursor = conn.cursor()
 
-        # TODO: 1. 사용자 잔액 확인
-        user_balance = 10000000
+        # 1. 사용자 주문 가능 금액(orderable_balance) 확인
+        cursor.execute("SELECT orderable_balance FROM Users WHERE id = %s", (user_id,))
+        result = cursor.fetchone()
+        if not result:
+            raise HTTPException(status_code=404, detail="유저 정보를 찾을 수 없습니다.")
+
+        orderable_balance = result[0]
         total_cost = order.quantity * order.price_per_token
-        if user_balance < total_cost:
-            raise HTTPException(status_code=400, detail="유저 잔액 부족")
+
+        if orderable_balance < total_cost:
+            raise HTTPException(status_code=400, detail="주문 가능한 잔액 부족")
+
+        # 1-2. 주문 가능한 금액에서 제외 (update)
+        cursor.execute(
+            "UPDATE Users SET orderable_balance = orderable_balance - %s WHERE id = %s",
+            (total_cost, user_id)
+        )
+        conn.commit()
 
         # 2. 주문 기록 저장 (Order_Archive 테이블)
         query = """
-            INSERT INTO Order_Archive (property_id, user_id, order_type, price_per_token, quantity, remain, status, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+            INSERT INTO Order_Archive (property_detail_id, user_id, order_type, price_per_token, quantity, status, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW())
         """
         cursor.execute(query, (
-            property_id, user_id, "buy", order.price_per_token, order.quantity, order.quantity, "normal"))
+            property_id, user_id, "buy", order.price_per_token, order.quantity, "normal"))
         conn.commit()
         order_id = cursor.lastrowid
 
@@ -61,25 +86,56 @@ async def submit_buy_order(order: BuyOrderRequest, property_id: int):
 
 # 주문 제출 API (매도)
 @router.post("/{property_id}/sell")
-async def submit_sell_order(order: SellOrderRequest, property_id: int):
-    # TODO: JWT에서 유저 ID 가져오기
-    user_id = 1
+async def submit_sell_order(
+        order: BuyOrderRequest,
+        property_id: int,
+        request: Request
+):
+    # 쿠키에서 JWT 가져오기
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="쿠키에 JWT없음")
+
+    # JWT에서 유저 ID 가져오기
+    try:
+        user_id = extract_user_id(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=f"토큰 유효 X {e}")
     try:
         conn = pymysql.connect(**DB_CONFIG)
         cursor = conn.cursor()
 
-        # TODO: 1. 사용자의 보유 토큰 확인
-        user_tokens = 10000000
-        if user_tokens is None or user_tokens < order.quantity:
-            raise HTTPException(status_code=400, detail="매도에 필요한 토큰량 부족")
+        # 1. 거래 가능 토큰 확인
+        query = """
+            SELECT tradeable_tokens 
+            FROM Ownerships 
+            WHERE user_id = %s AND property_id = %s
+        """
+        cursor.execute(query, (user_id, property_id))
+        result = cursor.fetchone()
+
+        if not result:
+            raise HTTPException(status_code=404, detail="해당 토큰을 소유하고 있지 않음")
+
+        tradeable_tokens = result[0]
+
+        if tradeable_tokens < order.quantity:
+            raise HTTPException(status_code=400, detail="매도에 필요한 거래 가능 토큰이 부족")
+
+        #1-2. 거래 가능 토큰 업데이트 (차감)
+        cursor.execute(
+            "UPDATE Ownerships SET tradeable_tokens = tradeable_tokens - %s WHERE user_id = %s AND property_id = %s",
+            (order.quantity, user_id, property_id)
+        )
+        conn.commit()
 
         # 2. 주문 기록 저장 (Order_Archive 테이블)
         query = """
-            INSERT INTO Order_Archive (property_id, user_id, order_type, price_per_token, quantity, remain, status, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+            INSERT INTO Order_Archive (property_detail_id, user_id, order_type, price_per_token, quantity, status, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW())
         """
         cursor.execute(query, (
-            property_id, user_id, "sell", order.price_per_token, order.quantity, order.quantity, "normal"))
+            property_id, user_id, "sell", order.price_per_token, order.quantity, "normal"))
         conn.commit()
         order_id = cursor.lastrowid
 
@@ -113,37 +169,6 @@ async def get_order_book(property_id: int):
         order_book = {"sell": {}, "buy": {}}
         REDIS_CLIENT.hset(redis_key, "order_book", json.dumps(order_book))  # Redis에 저장
     return {"property_id": property_id, "order_book": order_book}
-
-
-# Redis Pub/Sub Listener
-async def redis_listener():
-    # Redis 채널 구독
-    pubsub = REDIS_CLIENT.pubsub()
-    pubsub.subscribe("order_book_updates")
-    print("Redis listener started, subscribed to 'order_book_updates'")
-    try:
-        while True:
-            # Redis에서 메시지 수신
-            message = pubsub.get_message()
-            if message and message["type"] == "message":
-                data = json.loads(message["data"])
-                property_id = data.get("property_id")
-                if property_id:
-                    # WebSocket으로 브로드캐스트
-                    await manager.broadcast(json.dumps(data), property_id)
-            await asyncio.sleep(0.01)  # Redis 메시지 폴링 간격
-    except Exception as e:
-        print(f"Redis listener error: {e}")
-
-# Redis 데이터 업데이트 및 Pub/Sub 메시지 발행
-def update_order_book_in_redis(property_id: int, order_book: dict):
-    redis_key = f"order_book:{property_id}"
-    REDIS_CLIENT.hset(redis_key, "order_book", json.dumps(order_book))
-    update_message = {"property_id": property_id, "order_book": order_book}
-    REDIS_CLIENT.publish("order_book_updates", json.dumps(update_message))
-
-
-
 
 
 # # FastAPI 앱 생성
