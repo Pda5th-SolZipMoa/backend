@@ -66,7 +66,7 @@ async def get_user_tradeable_tokens(property_id: int, request: Request):
         # Ownerships 테이블에서 유저의 특정 방에 대한 거래가능토큰(tradeable_tokens) 조회
         cursor.execute(
             """
-            SELECT tradeable_tokens 
+            SELECT quantity, tradeable_tokens 
             FROM Ownerships 
             WHERE user_id = %s AND property_detail_id = %s
             """,
@@ -77,7 +77,7 @@ async def get_user_tradeable_tokens(property_id: int, request: Request):
         if not result:
             raise HTTPException(status_code=404, detail="거래가능토큰 정보를 찾을 수 없습니다.")
 
-        tradeable_tokens = result[0]
+        quantity, tradeable_tokens = result
     except pymysql.MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB 에러: {e}")
     finally:
@@ -88,4 +88,5 @@ async def get_user_tradeable_tokens(property_id: int, request: Request):
         "user_id": user_id,
         "property_id": property_id,
         "tradeable_tokens": tradeable_tokens,
+        "quantity": quantity,
     }
