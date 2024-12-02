@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from domain.apartments.getTotalApartInfo import router as total_router
 from domain.apartments.saveForm import router as form_router
 from domain.user.login import router as auth_router
+from domain.user.user_order_balance_api import router as order_balance_router
 from domain.order.main import router as order_router
 from domain.order.order_cancel import router as order_cancel_router
 from domain.order.order_socket import router as order_socket_router
@@ -41,6 +42,8 @@ app.include_router(auth_router, prefix='/api',
 app.include_router(order_router, prefix="/api/orders", tags=["order"])
 app.include_router(order_cancel_router, prefix="/api/orders", tags=["order_cancel"])
 app.include_router(order_socket_router, prefix="/api/ws/orders", tags=["order_socket"])
+
+app.include_router(order_balance_router, prefix="/api/users", tags=["order_balance_router"])
 
 
 # 애플리케이션 시작 시 Redis Listener와 스케줄러 실행
