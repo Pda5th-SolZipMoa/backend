@@ -4,8 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # from domain.apartments.getApartments import router as apartments_router
 # from domain.apartments.getBuildInfo import router as building_router
+from starlette.staticfiles import StaticFiles
 from domain.apartments.getTotalApartInfo import router as total_router
 from domain.apartments.saveForm import router as form_router
+from domain.apartments.getBuildingInfo import router as info_router
 from domain.user.login import router as auth_router
 from domain.user.user_order_balance_api import router as order_balance_router
 from domain.order.main import router as order_router
@@ -21,7 +23,7 @@ import os
 
 from pydantic import BaseModel
 app = FastAPI()
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],  # 허용할 도메인 (프론트엔드 주소)
@@ -34,8 +36,8 @@ app.add_middleware(
 # app.include_router(my_page_router.router, prefix="/api/mypage", tags=["mypage"])
 app.include_router(total_router,prefix="/api",tags=["apartments"])
 app.include_router(form_router,prefix="/api",tags=["apartments"])
+app.include_router(info_router,prefix="/api",tags=["apartments"])
 app.include_router(buildings_router, prefix="/api", tags=["buildings"])
-
 
 app.include_router(auth_router, prefix='/api',
                    tags=['auth'])

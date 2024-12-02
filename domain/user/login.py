@@ -11,10 +11,8 @@ class User(BaseModel):
     name: str
     phone: str
 
-
 class LoginRequest(BaseModel):
     phone: str
-
 
 # 회원가입 API
 @router.post("/signup")

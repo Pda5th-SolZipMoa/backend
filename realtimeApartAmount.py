@@ -16,15 +16,21 @@ API_KEY = SERVICE_KEY  # 데이터포털 API 키를 여기에 입력하세요
 
 def fetch_apartment_transactions(lawd_cd, bonbun, bubun=None, max_results=5):
     """
-    아파트 실거래가 API에서 거래 내역을 가져옵니다.
+    Fetches apartment transaction data for a specific apartment using bonbun and bubun,
+    starting from the latest month.
     """
     transactions = []
     today = datetime.now()
 
-    # 최근 12개월 동안의 데이터를 검색
+    # Strip leading zeros from bonbun and bubun for comparison
+    bonbun = bonbun.lstrip('0')
+    if bubun:
+        bubun = bubun.lstrip('0')
+
+    # Search data for the past 12 months, starting from the current month
     for i in range(12):
-        target_date = today - timedelta(days=i * 30)
-        deal_ymd = target_date.strftime("%Y%m")  # YYYYMM 형식
+        target_date = today - timedelta(days=i * 30)  # Go backward one month at a time
+        deal_ymd = target_date.strftime("%Y%m")  # YYYYMM format
 
         params = {
             'serviceKey': API_KEY,
@@ -42,8 +48,27 @@ def fetch_apartment_transactions(lawd_cd, bonbun, bubun=None, max_results=5):
 
             items = body.find('items').findall('item')
 
+            # Process each item
             for item in items:
                 try:
+                    # Extract jibun and parse bonbun and bubun
+                    jibun = item.find('jibun').text.strip() if item.find('jibun') is not None else ""
+                    bonbun_bubun = jibun.split('-')
+
+                    bonbun_from_jibun = bonbun_bubun[0].lstrip('0')
+                    bubun_from_jibun = bonbun_bubun[1].lstrip('0') if len(bonbun_bubun) > 1 else ''
+
+                    # Compare bonbun and bubun
+                    if bonbun_from_jibun != bonbun:
+                        continue  # bonbun does not match
+                    if bubun:
+                        if bubun_from_jibun != bubun:
+                            continue  # bubun does not match
+                    else:
+                        if bubun_from_jibun != '':
+                            continue  # We want bubun to be empty
+
+                    # Extract transaction details
                     trade_year = item.find('dealYear').text.strip() if item.find('dealYear') is not None else "Unknown"
                     trade_month = item.find('dealMonth').text.strip() if item.find('dealMonth') is not None else "Unknown"
                     trade_day = item.find('dealDay').text.strip() if item.find('dealDay') is not None else "Unknown"
@@ -72,15 +97,16 @@ def fetch_apartment_transactions(lawd_cd, bonbun, bubun=None, max_results=5):
                         "floor": floor,
                     })
 
-                    # 최대 결과 수에 도달하면 반환
+                    # Stop if max_results reached
                     if len(transactions) >= max_results:
                         return transactions
 
                 except Exception as e:
                     print(f"Error parsing item: {e}")
-                    continue  # 오류가 발생해도 다음 데이터를 계속 처리
+                    continue  # Continue processing next items even if there's an error
 
     return transactions
+
 
 
 def update_property_transactions():
