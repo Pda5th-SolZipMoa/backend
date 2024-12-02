@@ -8,6 +8,7 @@ from domain.apartments.getTotalApartInfo import router as total_router
 from domain.apartments.saveForm import router as form_router
 from domain.user.login import router as auth_router
 from domain.user.user_order_balance_api import router as order_balance_router
+from domain.ownerships.ownerships import router as ownerships_router
 from domain.order.main import router as order_router
 from domain.order.order_cancel import router as order_cancel_router
 from domain.order.order_socket import router as order_socket_router
@@ -46,6 +47,7 @@ app.include_router(order_socket_router, prefix="/api/ws/orders", tags=["order_so
 
 app.include_router(property_history_router, prefix="/api/properties", tags=["property_history_router"])
 app.include_router(order_balance_router, prefix="/api/users", tags=["order_balance_router"])
+app.include_router(ownerships_router, prefix="/api/ownerships", tags=["ownerships_router"])
 
 # 애플리케이션 시작 시 Redis Listener와 스케줄러 실행
 @app.on_event("startup")
