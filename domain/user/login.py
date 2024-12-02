@@ -1,15 +1,7 @@
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import HTTPException, APIRouter, Response
 from pydantic import BaseModel
-from passlib.context import CryptContext
-from datetime import datetime, timedelta
-import jwt
-from core.mysql_connector import get_db_connection  # mysql_connector에서 get_db_connection 임포트
-
-# JWT 및 비밀번호 설정
-SECRET_KEY = "your_secret_key"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from core.jwt import create_access_token
+from core.mysql_connector import DB
 
 # 라우터 초기화
 router = APIRouter()
@@ -22,58 +14,54 @@ class User(BaseModel):
 class LoginRequest(BaseModel):
     phone: str
 
-# JWT 토큰 생성 함수
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
 # 회원가입 API
 @router.post("/signup")
-def signup(user: User):
-    with get_db_connection() as connection:
-        cursor = connection.cursor()
-        try:
-            # 사용자 데이터 삽입
-            sql = "INSERT INTO Users (username, phone) VALUES (%s, %s)"
-            cursor.execute(sql, (user.name, user.phone))
-            connection.commit()
-            return {"message": "User registered successfully"}
-        except Exception as e:
-            connection.rollback()
-            print("Error during user registration:", e)
-            raise HTTPException(status_code=500, detail="Failed to register user")
-        finally:
-            cursor.close()
+def signup(user: User, db_conn: DB):
+    cursor = db_conn.cursor()
+
+    # 중복 체크 쿼리
+    check_phone_query = '''
+        SELECT phone FROM Users WHERE phone = %s
+    '''
+    cursor.execute(check_phone_query, (user.phone,))
+    result = cursor.fetchone()
+
+    if result:  # 중복값이 존재할 경우
+        raise HTTPException(
+            status_code=400, detail="This phone number is already registered.")
+    else:  # 중복값이 없을 경우
+        sql = '''
+            INSERT INTO Users (username, phone) VALUES (%s, %s)
+        '''
+        cursor.execute(sql, (user.name, user.phone))
+        db_conn.commit()
+
+    return {"message": "Signup successful"}
+
 
 # 로그인 API
 @router.post("/login")
-def login(login_request: LoginRequest, response: Response):
-    with get_db_connection() as connection:
-        cursor = connection.cursor()
-        try:
-            # 사용자 데이터 조회
-            sql = "SELECT username, phone FROM Users WHERE phone = %s"
-            cursor.execute(sql, (login_request.phone,))
-            db_user = cursor.fetchone()
+def login(login_request: LoginRequest, db_conn: DB, response: Response):
+    cursor = db_conn.cursor()
 
-            if db_user:
-                # JWT 토큰 생성 및 쿠키 설정
-                access_token = create_access_token(data={"sub": db_user["username"]})
-                response.set_cookie(
-                    key="access_token",
-                    value=f"Bearer {access_token}",
-                    httponly=True,
-                    max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-                    samesite="lax",
-                )
-                return {"message": "Login successful", "user": {"username": db_user["username"]}}
-            else:
-                raise HTTPException(status_code=400, detail="Invalid phone number")
-        except Exception as e:
-            print("Error during login:", e)
-            raise HTTPException(status_code=500, detail="Failed to login")
-        finally:
-            cursor.close()
+    # 입력된 phone의 사용자 데이터 확인
+    check_user_query = '''
+        SELECT id FROM Users WHERE phone = %s
+    '''
+    cursor.execute(check_user_query, (login_request.phone,))
+    db_user = cursor.fetchone()
+
+    if db_user:
+        # 로그인 성공 시 토큰 생성
+        access_token = create_access_token(user_id=db_user["id"])
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            max_age=30 * 60,  # 30분 (JWT 기본 만료 시간)
+            samesite="lax",
+        )
+        return {"message": "Login successful!", "user": {"id": db_user["id"]}}
+    else:
+        # 번호가 존재하지 않을 경우 기존 로직 수행
+        raise HTTPException(status_code=400, detail="Invalid phone number")
