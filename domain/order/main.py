@@ -109,7 +109,7 @@ async def submit_sell_order(
         query = """
             SELECT tradeable_tokens 
             FROM Ownerships 
-            WHERE user_id = %s AND property_id = %s
+            WHERE user_id = %s AND property_detail_id = %s
         """
         cursor.execute(query, (user_id, property_id))
         result = cursor.fetchone()
@@ -124,7 +124,7 @@ async def submit_sell_order(
 
         #1-2. 거래 가능 토큰 업데이트 (차감)
         cursor.execute(
-            "UPDATE Ownerships SET tradeable_tokens = tradeable_tokens - %s WHERE user_id = %s AND property_id = %s",
+            "UPDATE Ownerships SET tradeable_tokens = tradeable_tokens - %s WHERE user_id = %s AND property_detail_id = %s",
             (order.quantity, user_id, property_id)
         )
         conn.commit()
