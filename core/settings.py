@@ -4,7 +4,7 @@ import redis
 
 # .env 파일 로드
 load_dotenv()
-
+print(os.getenv("DB_HOST"))
 # MySQL 설정
 DB_CONFIG = {
     "host": os.getenv("DB_HOST"),

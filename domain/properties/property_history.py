@@ -6,6 +6,8 @@ import pymysql
 router = APIRouter()
 
 # 건물 단일가매매 기록 조회 API
+
+
 @router.get("/{property_id}/history")
 async def get_property_history(property_id: int):
     try:
