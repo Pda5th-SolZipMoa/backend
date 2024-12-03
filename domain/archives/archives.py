@@ -30,20 +30,40 @@ async def get_user_order_archives(
         if status:
             cursor.execute(
                 """
-                SELECT order_type, price_per_token, quantity, status, created_at 
-                FROM Order_Archive 
-                WHERE user_id = %s AND status = %s
-                ORDER BY created_at DESC
+                SELECT 
+                    oa.id,
+                    oa.order_type, 
+                    oa.price_per_token, 
+                    oa.quantity, 
+                    oa.status, 
+                    oa.created_at,
+                    pd.detail_floor,
+                    b.name AS building_name
+                FROM Order_Archive oa
+                LEFT JOIN Property_Detail pd ON oa.property_detail_id = pd.id
+                LEFT JOIN Building b ON pd.property_id = b.id
+                WHERE oa.user_id = %s AND oa.status = %s
+                ORDER BY oa.created_at DESC
                 """,
                 (user_id, status)
             )
         else:
             cursor.execute(
                 """
-                SELECT order_type, price_per_token, quantity, status, created_at 
-                FROM Order_Archive 
-                WHERE user_id = %s
-                ORDER BY created_at DESC
+                SELECT 
+                    oa.id,
+                    oa.order_type, 
+                    oa.price_per_token, 
+                    oa.quantity, 
+                    oa.status, 
+                    oa.created_at,
+                    pd.detail_floor,
+                    b.name AS building_name
+                FROM Order_Archive oa
+                LEFT JOIN Property_Detail pd ON oa.property_detail_id = pd.id
+                LEFT JOIN Building b ON pd.property_id = b.id
+                WHERE oa.user_id = %s
+                ORDER BY oa.created_at DESC
                 """,
                 (user_id,)
             )
@@ -55,11 +75,14 @@ async def get_user_order_archives(
 
         orders = [
             {
-                "order_type": row[0],
-                "price_per_token": row[1],
-                "quantity": row[2],
-                "status": row[3],
-                "created_at": row[4],
+                "id": row[0],
+                "order_type": row[1],
+                "price_per_token": row[2],
+                "quantity": row[3],
+                "status": row[4],
+                "created_at": row[5],
+                "detail_floor": row[6],
+                "building_name": row[7],
             }
             for row in results
         ]
