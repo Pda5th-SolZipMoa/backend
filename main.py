@@ -34,7 +34,7 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","http://localhost"],  # 허용할 도메인 (프론트엔드 주소)
+    allow_origins=["http://localhost:5173","http://3.37.185.91"],  # 허용할 도메인 (프론트엔드 주소)
     allow_credentials=True,
     allow_methods=["*"],  # 모든 HTTP 메서드 허용
     allow_headers=["*"],  # 모든 HTTP 헤더 허용
