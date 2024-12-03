@@ -22,6 +22,24 @@ CREATE TABLE Property_Detail (
     PRIMARY KEY (id)
 ) COMMENT='건물 매물 정보';
 
+CREATE TABLE Building (
+    id BIGINT NOT NULL COMMENT '건물id',
+    name VARCHAR(100) NOT NULL COMMENT '건물이름',
+    token_supply INT NOT NULL COMMENT '건물에 할당된 총 토큰 수',
+    created_at DATETIME NOT NULL COMMENT '건물등록시간',
+    price FLOAT NULL COMMENT '최근 거래된 가격',
+    address VARCHAR(100) NOT NULL COMMENT '건물실주소',
+    building_code VARCHAR(100) NOT NULL COMMENT '건물주소 코드',
+    platArea VARCHAR(100) NOT NULL COMMENT '대지면적',
+    bcRat VARCHAR(100) NOT NULL COMMENT '건폐율',
+    totArea VARCHAR(100) NOT NULL COMMENT '연면적',
+    vlRat VARCHAR(100) NOT NULL COMMENT '용적률',
+    property_photo VARCHAR(100) NULL COMMENT '대표사진 [static경로.jpeg]',
+    Lat FLOAT NULL COMMENT '위도',
+    Lng FLOAT NULL COMMENT '경도',
+    PRIMARY KEY (id)
+) COMMENT='건물 정보 테이블';
+
 CREATE TABLE Ownerships (
     id BIGINT AUTO_INCREMENT NOT NULL COMMENT '소유내역id',
     quantity INT NULL COMMENT '소유량',
