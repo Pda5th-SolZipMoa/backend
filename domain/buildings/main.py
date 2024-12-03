@@ -5,6 +5,7 @@ from typing import List
 from datetime import datetime
 from fastapi.concurrency import run_in_threadpool
 from core.mysql_connector import get_db_connection
+from typing import Optional
 
 # 라우터 생성
 router = APIRouter()
@@ -20,13 +21,13 @@ class PhotoResponse(BaseModel):
 class BuildingResponse(BaseModel):
     id: int
     name: str
-    token_supply: int
-    token_cost: float  # token_cost 추가
+    token_supply: Optional[int]
+    token_cost: Optional[int]  # token_cost 추가
     created_at: datetime
     price: float
     address: str
     building_code: str
-    owner_id: int
+    #owner_id: int
     photos: List[PhotoResponse]
     lat: float
     lng: float
@@ -48,7 +49,6 @@ async def get_buildings_with_photos():
                 p.price,
                 p.address,
                 p.building_code,
-                p.owner_id,
                 p.lat,
                 p.lng,
                 p.property_photo AS photo_url  -- 대표 사진을 가져옴
@@ -86,7 +86,7 @@ async def get_buildings_with_photos():
                     "price": row["price"],
                     "address": row["address"],
                     "building_code": row["building_code"],
-                    "owner_id": row["owner_id"],
+                    #"owner_id": row["owner_id"],
                     "lat": row["lat"],
                     "lng": row["lng"],
                     "photos": [],
