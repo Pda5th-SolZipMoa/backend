@@ -2,8 +2,6 @@ name: Backend CI/CD
 
 on:
   push:
-    paths:
-      - 'backend/**' # backend 디렉토리의 변경 사항에만 반응
     branches:
       - main # main 브랜치로 푸시될 때 실행
 
