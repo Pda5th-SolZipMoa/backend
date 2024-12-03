@@ -23,12 +23,26 @@ async def get_user_ownerships(request: Request):
         conn = pymysql.connect(**DB_CONFIG)
         cursor = conn.cursor()
 
-        # Ownerships 테이블에서 유저의 보유 토큰 정보 조회
+        # 한 번의 쿼리로 데이터 가져오기
         cursor.execute(
             """
-            SELECT property_detail_id, quantity, buy_price 
-            FROM Ownerships 
-            WHERE user_id = %s
+            SELECT 
+                o.property_detail_id,
+                o.quantity,
+                o.buy_price,
+                pd.detail_floor,
+                b.name AS building_name,
+                (
+                    SELECT price
+                    FROM Property_History ph
+                    WHERE ph.property_detail_id = o.property_detail_id
+                    ORDER BY ph.recorded_date DESC
+                    LIMIT 1
+                ) AS latest_price
+            FROM Ownerships o
+            JOIN Property_Detail pd ON o.property_detail_id = pd.id
+            JOIN Building b ON pd.property_id = b.id
+            WHERE o.user_id = %s
             """,
             (user_id,)
         )
@@ -37,14 +51,20 @@ async def get_user_ownerships(request: Request):
         if not results:
             raise HTTPException(status_code=404, detail="보유 토큰 정보를 찾을 수 없습니다.")
 
+        # 데이터를 리스트로 변환
         ownerships = [
             {
                 "property_detail_id": row[0],
                 "quantity": row[1],
                 "buy_price": row[2],
+                "detail_floor": row[3],
+                "building_name": row[4],
+                "latest_price": row[5] if row[5] else 0,
+                "eval_value": (row[5] * row[1]) if row[5] else 0
             }
             for row in results
         ]
+
     except pymysql.MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB 에러: {e}")
     finally:
