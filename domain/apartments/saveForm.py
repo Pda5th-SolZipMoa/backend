@@ -44,7 +44,6 @@ def fetch_building_info(building_info: BuildingInfo):
     response = requests.get(BUILDING_BASE_URL, params=params)
     if response.status_code == 200:
         data = response.json()
-
         # Handle cases where data is missing
         if "response" in data and data["response"]["body"]["totalCount"] == "0":
             raise HTTPException(status_code=404, detail="건물 데이터를 찾을 수 없습니다.")
@@ -87,7 +86,6 @@ async def create_property(
         token_supply: int = Form(...),
         token_cost: int = Form(...),
         period: str = Form(...),
-
 ):
     if not legalNotice:
         raise HTTPException(status_code=400, detail="이용 약관에 동의해야 합니다.")
@@ -111,7 +109,6 @@ async def create_property(
                 bun=bun,
                 ji=ji
             )
-
             # Fetch building info
             building_summary = fetch_building_info(building_info)
 
@@ -163,7 +160,7 @@ async def create_property(
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(insert_property_query, (
-                    name, token_supply, created_at, price, owner_id, address,
+                    name, created_at, price, owner_id, address,
                     building_code, platArea, bcRat, totArea, vlRat, lat, lng, property_photo_path
                 ))
                 property_id = cursor.lastrowid
