@@ -19,13 +19,13 @@ CREATE TABLE Property_Detail (
     legalDocs VARCHAR(255) NULL COMMENT '법적문서 [static경로.jpeg]',
     legalNotice TINYINT DEFAULT 0 NULL COMMENT '동의여부 (0: 미동의, 1: 동의)',
     property_id BIGINT NULL COMMENT '건물id',
+    subscription_status ENUM('pending', 'fulfilled') DEFAULT 'pending' COMMENT '청약 상태',
     PRIMARY KEY (id)
 ) COMMENT='건물 매물 정보';
 
-CREATE TABLE Building (
+CREATE TABLE Properties (
     id BIGINT NOT NULL COMMENT '건물id',
     name VARCHAR(100) NOT NULL COMMENT '건물이름',
-    token_supply INT NOT NULL COMMENT '건물에 할당된 총 토큰 수',
     created_at DATETIME NOT NULL COMMENT '건물등록시간',
     price FLOAT NULL COMMENT '최근 거래된 가격',
     address VARCHAR(100) NOT NULL COMMENT '건물실주소',

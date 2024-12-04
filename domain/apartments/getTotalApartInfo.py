@@ -41,7 +41,7 @@ def fetch_building_info(building_id: int):
 
                 # Property_Detail 테이블에서 이미지 URL을 제외하고 매물 정보 가져오기
                 detail_query = """
-                    SELECT id, detail_floor, room_cnt, maintenance_cost, home_size,token_supply,token_cost,period
+                    SELECT id, detail_floor, room_cnt, maintenance_cost, home_size,token_supply,token_cost,period, subscription_status
                     FROM Property_Detail
                     WHERE property_id = %s
                 """
@@ -60,6 +60,7 @@ def fetch_building_info(building_id: int):
                         "토큰발행":detail.get("token_supply"),
                         "토큰가격":detail.get("token_cost"),
                         "청약기간": detail.get("period"),
+                        "상태": detail.get("subscription_status")
                     })
 
                 # 건물 요약 정보에 상세 정보 리스트 추가

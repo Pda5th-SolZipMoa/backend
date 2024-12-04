@@ -20,6 +20,7 @@ from domain.subscription.main import move_subscriptions_to_ownerships
 from domain.side_detail.chatgpt import router as gpt_router
 from domain.side_detail.newssection import router as news_router
 from domain.side_detail.discussion import router as discussion_router
+from domain.apartments.property_details import router as property_router
 # from domain.discussion.websocket import websocket_router
 from domain.properties.property_history import router as property_history_router
 from domain.archives.archives import router as archives_router
@@ -67,10 +68,13 @@ app.include_router(property_history_router, prefix="/api/properties", tags=["pro
 app.include_router(order_balance_router, prefix="/api/users", tags=["order_balance_router"])
 app.include_router(subscription_router, prefix="/api/subscriptions", tags=["subscriptions"])
 app.include_router(archives_router, prefix="/api/order_archives", tags=["archives_router"])
+app.include_router(property_router, prefix="/api/property/details", tags=["property_router"])
+app.include_router(ownerships_router, prefix="/api/ownerships", tags=["ownerships_router"])
 
 # 애플리케이션 시작 시 Redis Listener와 스케줄러 실행
 @app.on_event("startup")
 async def startup_event():
+    await asyncio.sleep(8)
     loop = asyncio.get_event_loop()
     # Redis Listener 실행
     loop.create_task(redis_listener())
