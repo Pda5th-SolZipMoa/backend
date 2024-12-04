@@ -28,9 +28,9 @@ class OwnershipRecord(OwnershipRequest):
 @router.post("/subscribe", response_model=OwnershipRecord)
 async def subscribe(request: OwnershipRequest, jwt: Request):
     """
-    Subscriptions 테이블에 청약 데이터를 추가
+    Subscriptions 테이블에 청약 데이터를 추가하고 사용자의 주문 가능 금액과 보유 금액을 감소
     """
-     # 쿠키에서 JWT 가져오기
+    # 쿠키에서 JWT 가져오기
     token = jwt.cookies.get("access_token")
     if not token:
         raise HTTPException(status_code=401, detail="쿠키에 JWT없음")
@@ -40,8 +40,47 @@ async def subscribe(request: OwnershipRequest, jwt: Request):
         user_id = extract_user_id(token)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=f"토큰 유효 X {e}")
-        
+
+    total_cost = request.buy_price * request.quantity
+
+    def check_and_update_user_balance():
+        """
+        사용자의 잔액을 확인하고 주문 가능 금액과 보유 금액을 감소시킴
+        """
+        select_query = """
+            SELECT total_balance, orderable_balance
+            FROM Users
+            WHERE id = %s
+        """
+        update_query = """
+            UPDATE Users
+            SET total_balance = total_balance - %s,
+                orderable_balance = orderable_balance - %s
+            WHERE id = %s
+        """
+        try:
+            with get_db_connection() as connection:
+                with connection.cursor() as cursor:
+                    # 사용자 잔액 확인
+                    cursor.execute(select_query, (user_id,))
+                    result = cursor.fetchone()
+                    if not result:
+                        raise HTTPException(status_code=404, detail="사용자 정보 없음")
+
+                    total_balance, orderable_balance = result
+                    if total_balance < total_cost or orderable_balance < total_cost:
+                        raise HTTPException(status_code=400, detail="잔액 부족")
+
+                    # 사용자 잔액 업데이트
+                    cursor.execute(update_query, (total_cost, total_cost, user_id))
+                    connection.commit()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"잔액 업데이트 실패: {e}")
+
     def insert_subscription():
+        """
+        Subscriptions 테이블에 청약 데이터 삽입
+        """
         query = """
             INSERT INTO Subscriptions (user_id, property_detail_id, price_per_token, quantity, status, subscription_end_date)
             VALUES (%s, %s, %s, %s, 'pending', %s)
@@ -63,10 +102,15 @@ async def subscribe(request: OwnershipRequest, jwt: Request):
             raise HTTPException(status_code=500, detail=f"Database insertion failed: {e}")
 
     try:
+        # 1. 사용자 잔액 확인 및 업데이트
+        await run_in_threadpool(check_and_update_user_balance)
+
+        # 2. 청약 데이터 삽입
         subscription_id = await run_in_threadpool(insert_subscription)
+
+        # 3. 응답 반환
         return OwnershipRecord(
             id=subscription_id,
-            user_id=user_id,
             property_detail_id=request.property_detail_id,
             quantity=request.quantity,
             tradeable_tokens=request.tradeable_tokens,

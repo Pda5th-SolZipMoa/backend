@@ -34,11 +34,10 @@ def signup(user: User):
                 status_code=400, detail="This phone number is already registered.")
         else:  # 중복값이 없을 경우
             sql = '''
-                INSERT INTO Users (username, phone) VALUES (%s, %s)
+                INSERT INTO Users (username, phone, total_balance, orderable_balance) VALUES (%s, %s, %s, %s)
             '''
-            cursor.execute(sql, (user.name, user.phone))
+            cursor.execute(sql, (user.name, user.phone, 100000000, 100000000))
             conn.commit()
-
         return {"message": "Signup successful"}
     except pymysql.MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB Error: {e}")
