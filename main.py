@@ -69,6 +69,7 @@ app.include_router(order_balance_router, prefix="/api/users", tags=["order_balan
 app.include_router(subscription_router, prefix="/api/subscriptions", tags=["subscriptions"])
 app.include_router(archives_router, prefix="/api/order_archives", tags=["archives_router"])
 app.include_router(property_router, prefix="/api/property/details", tags=["property_router"])
+app.include_router(ownerships_router, prefix="/api/ownerships", tags=["ownerships_router"])
 
 # 애플리케이션 시작 시 Redis Listener와 스케줄러 실행
 @app.on_event("startup")
