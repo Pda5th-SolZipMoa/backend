@@ -14,8 +14,6 @@ class User(BaseModel):
 
 class LoginRequest(BaseModel):
     phone: str
-
-# 회원가입 API
 @router.post("/signup")
 def signup(user: User):
     try:
@@ -33,19 +31,40 @@ def signup(user: User):
             raise HTTPException(
                 status_code=400, detail="This phone number is already registered.")
         else:  # 중복값이 없을 경우
-            sql = '''
-                INSERT INTO Users (username, phone, total_balance, orderable_balance) VALUES (%s, %s, %s, %s)
+            # 사용자 등록
+            insert_user_query = '''
+                INSERT INTO Users (username, phone, total_balance, orderable_balance) 
+                VALUES (%s, %s, %s, %s)
             '''
-            cursor.execute(sql, (user.name, user.phone, 100000000, 100000000))
+            cursor.execute(insert_user_query, (user.name, user.phone, 100000000, 100000000))
             conn.commit()
+            user_id = cursor.lastrowid  # 새로 생성된 사용자 ID 가져오기
+
+            # Property_Detail에서 token_cost 가져오기 (5개 제한)
+            select_property_query = '''
+                SELECT id, token_cost FROM Property_Detail LIMIT 5
+            '''
+            cursor.execute(select_property_query)
+            property_details = cursor.fetchall()
+
+            # Ownerships 테이블에 각 Property_Detail에 대해 20개의 소유권 생성
+            for property_detail in property_details:
+                insert_ownership_query = '''
+                    INSERT INTO Ownerships (
+                        quantity, tradeable_tokens, buy_price, created_at, user_id, property_detail_id
+                    ) VALUES (%s, %s, %s, NOW(), %s, %s)
+                '''
+                token_cost = property_detail['token_cost']
+                property_id = property_detail['id']
+                cursor.execute(insert_ownership_query, (20, 20, token_cost, user_id, property_id))
+            conn.commit()
+
         return {"message": "Signup successful"}
     except pymysql.MySQLError as e:
         raise HTTPException(status_code=500, detail=f"DB Error: {e}")
     finally:
         cursor.close()
         conn.close()
-
-
 # 로그인 API
 @router.post("/login")
 def login(login_request: LoginRequest, response: Response):
