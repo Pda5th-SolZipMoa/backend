@@ -1,12 +1,13 @@
 from datetime import datetime
 from pymysql import connect
 from core.mysql_connector import get_db_connection
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
 from typing import List
 import shutil
 import os, requests, json
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from core.jwt import extract_user_id
 
 router = APIRouter()
 IMAGE_DIR = "static/images/"
@@ -17,7 +18,7 @@ load_dotenv()
 SERVICE_KEY = os.getenv("PUBLIC_DATA_API_KEY")
 
 # API basic URL
-BUILDING_BASE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo"
+BUILDING_BASE_URL = "http://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo"
 
 # Data model for building information
 class BuildingInfo(BaseModel):
@@ -63,10 +64,11 @@ def fetch_building_info(building_info: BuildingInfo):
 
 @router.post("/apartments/token")
 async def create_property(
+        request: Request,
         name: str = Form(...),
         created_at: datetime = datetime.now(),
         price: int = Form(...),
-        owner_id: int = 10,
+        # owner_id: int = Form(...),
         address: str = Form(...),
         building_code: str = Form(...),
         platArea: str = Form(None),
@@ -87,6 +89,19 @@ async def create_property(
         token_cost: int = Form(...),
         period: str = Form(...),
 ):
+    # JWT에서 유저 ID 추출
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="쿠키에 JWT 없음")
+
+    try:
+        user_id = extract_user_id(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=f"유효하지 않은 토큰: {e}")
+
+    # owner_id를 인증된 사용자 ID로 설정
+    owner_id = user_id
+
     if not legalNotice:
         raise HTTPException(status_code=400, detail="이용 약관에 동의해야 합니다.")
 
@@ -156,11 +171,11 @@ async def create_property(
             else:
                 # 존재하지 않는 building_code일 경우 Properties에 데이터 삽입
                 insert_property_query = """
-                    INSERT INTO Properties (name, created_at, price, owner_id, address, building_code, platArea, bcRat, totArea, vlRat, lat, lng, property_photo)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO Properties (name, created_at, price, address, building_code, platArea, bcRat, totArea, vlRat, lat, lng, property_photo)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(insert_property_query, (
-                    name, created_at, price, owner_id, address,
+                    name, created_at, price, address,
                     building_code, platArea, bcRat, totArea, vlRat, lat, lng, property_photo_path
                 ))
                 property_id = cursor.lastrowid
@@ -191,11 +206,11 @@ async def create_property(
 
             # Property_Detail 테이블에 데이터 삽입
             insert_detail_query = """
-                INSERT INTO Property_Detail (property_id, token_supply, token_cost, period, detail_floor, home_size, room_cnt, maintenance_cost, home_photos, legalDocs, legalNotice)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO Property_Detail (property_id, token_supply, token_cost, period, detail_floor, home_size, room_cnt, maintenance_cost, home_photos, legalDocs, legalNotice,owner_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(insert_detail_query, (
-                property_id,token_supply,token_cost,period, detail_floor, home_size, room_cnt, maintenance_cost, home_photos_json, legalDocs_path, int(legalNotice)
+                property_id,token_supply,token_cost,period, detail_floor, home_size, room_cnt, maintenance_cost, home_photos_json, legalDocs_path, int(legalNotice), owner_id
             ))
 
             conn.commit()
