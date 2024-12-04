@@ -195,10 +195,9 @@ logger = logging.getLogger(__name__)
 
 # 스케줄러 초기화
 scheduler = BackgroundScheduler()
-
 async def move_subscriptions_to_ownerships(interval: int = 60):
     """
-    주기적으로 Subscriptions 데이터를 확인하고 Ownerships로 이동.
+    주기적으로 Subscriptions 데이터를 확인하고 Ownerships로 이동하며, Property_Detail 상태를 업데이트.
     """
     while True:
         try:
@@ -207,9 +206,13 @@ async def move_subscriptions_to_ownerships(interval: int = 60):
                 with connection.cursor(pymysql.cursors.DictCursor) as cursor:
                     # 1. 'pending' 상태의 청약 데이터를 조회
                     query_select = """
-                        SELECT id, user_id, property_detail_id, quantity, price_per_token
-                        FROM Subscriptions
-                        WHERE subscription_end_date <= NOW() AND status = 'pending'
+                        SELECT s.id AS subscription_id, s.user_id, s.property_detail_id, s.quantity, s.price_per_token,
+                               pd.subscription_status
+                        FROM Subscriptions s
+                        JOIN Property_Detail pd ON s.property_detail_id = pd.id
+                        WHERE s.subscription_end_date <= NOW() 
+                          AND s.status = 'pending'
+                          AND pd.subscription_status = 'pending'
                     """
                     cursor.execute(query_select)
                     subscriptions = cursor.fetchall()
@@ -237,22 +240,31 @@ async def move_subscriptions_to_ownerships(interval: int = 60):
                                 )
 
                                 # 3. Subscriptions 상태 업데이트
-                                query_update = """
+                                query_update_subscription = """
                                     UPDATE Subscriptions
                                     SET status = 'fulfilled'
                                     WHERE id = %s
                                 """
-                                cursor.execute(query_update, (subscription['id'],))
-                                logging.info(f"Processed subscription ID: {subscription['id']}")
+                                cursor.execute(query_update_subscription, (subscription['subscription_id'],))
+
+                                # 4. Property_Detail 상태 업데이트
+                                query_update_property = """
+                                    UPDATE Property_Detail
+                                    SET subscription_status = 'fulfilled'
+                                    WHERE id = %s
+                                """
+                                cursor.execute(query_update_property, (subscription['property_detail_id'],))
+
+                                logging.info(f"Processed subscription ID: {subscription['subscription_id']}")
                             except Exception as e:
-                                logging.error(f"Error processing subscription ID {subscription['id']}: {e}")
+                                logging.error(f"Error processing subscription ID {subscription['subscription_id']}: {e}")
                                 continue
 
-                        # 4. 변경사항 커밋
+                        # 5. 변경사항 커밋
                         connection.commit()
                         logging.info("All subscriptions processed successfully.")
         except Exception as e:
             logging.error(f"Error in move_subscriptions_to_ownerships: {e}")
 
-        # 5. 주기적으로 실행
+        # 6. 주기적으로 실행
         await asyncio.sleep(interval)

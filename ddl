@@ -19,6 +19,7 @@ CREATE TABLE Property_Detail (
     legalDocs VARCHAR(255) NULL COMMENT '법적문서 [static경로.jpeg]',
     legalNotice TINYINT DEFAULT 0 NULL COMMENT '동의여부 (0: 미동의, 1: 동의)',
     property_id BIGINT NULL COMMENT '건물id',
+    subscription_status ENUM('pending', 'fulfilled') DEFAULT 'pending' COMMENT '청약 상태',
     PRIMARY KEY (id)
 ) COMMENT='건물 매물 정보';
 
