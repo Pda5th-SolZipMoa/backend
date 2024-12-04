@@ -1,3 +1,83 @@
+from fastapi import APIRouter, HTTPException, Request;
+from pydantic import BaseModel
+from typing import List
+from fastapi.concurrency import run_in_threadpool
+from core.mysql_connector import get_db_connection
+from datetime import datetime
+import pymysql.cursors
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.base import STATE_RUNNING
+import asyncio
+from core.jwt import extract_user_id
+import logging
+
+router = APIRouter()
+
+# 데이터 모델
+class OwnershipRequest(BaseModel):
+    property_detail_id: int
+    quantity: int
+    tradeable_tokens: int
+    buy_price: float
+    subscription_end_date: datetime
+
+class OwnershipRecord(OwnershipRequest):
+    id: int
+    created_at: str
+
+@router.post("/subscribe", response_model=OwnershipRecord)
+async def subscribe(request: OwnershipRequest, jwt: Request):
+    """
+    Subscriptions 테이블에 청약 데이터를 추가
+    """
+     # 쿠키에서 JWT 가져오기
+    token = jwt.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="쿠키에 JWT없음")
+
+    # JWT에서 유저 ID 가져오기
+    try:
+        user_id = extract_user_id(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=f"토큰 유효 X {e}")
+        
+    def insert_subscription():
+        query = """
+            INSERT INTO Subscriptions (user_id, property_detail_id, price_per_token, quantity, status, subscription_end_date)
+            VALUES (%s, %s, %s, %s, 'pending', %s)
+        """
+        values = (
+            user_id,
+            request.property_detail_id,
+            request.buy_price,
+            request.quantity,
+            request.subscription_end_date,
+        )
+        try:
+            with get_db_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(query, values)
+                    connection.commit()
+                    return cursor.lastrowid
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database insertion failed: {e}")
+
+    try:
+        subscription_id = await run_in_threadpool(insert_subscription)
+        return OwnershipRecord(
+            id=subscription_id,
+            user_id=user_id,
+            property_detail_id=request.property_detail_id,
+            quantity=request.quantity,
+            tradeable_tokens=request.tradeable_tokens,
+            buy_price=request.buy_price,
+            subscription_end_date=request.subscription_end_date,
+            created_at="NOW()",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # 특정 청약 토큰에서 청약이 완료된 토큰 합산하여 반환
 @router.get("/tokens/{property_detail_id}")
 async def get_total_quantity(property_detail_id: int):
@@ -65,12 +145,12 @@ async def get_subscriptions(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
 
-
+# 로그 설정
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # 스케줄러 초기화
 scheduler = BackgroundScheduler()
-
-from datetime import datetime
 
 def move_subscriptions_to_ownerships():
     """
@@ -91,13 +171,14 @@ def move_subscriptions_to_ownerships():
         WHERE id = %s
     """
     try:
+        logger.info("Starting to process subscriptions...")
         with get_db_connection() as connection:
             with connection.cursor(pymysql.cursors.DictCursor) as cursor:
                 # 1. 청약 종료일에 도달하고 상태가 'pending'인 데이터 조회
                 cursor.execute(query_select)
                 subscriptions = cursor.fetchall()
 
-                print(f"Found {len(subscriptions)} subscriptions to process.")  # 로그 출력
+                logger.info(f"Found {len(subscriptions)} subscriptions to process.")
 
                 for subscription in subscriptions:
                     try:
@@ -115,16 +196,16 @@ def move_subscriptions_to_ownerships():
                         )
                         # 3. Subscriptions 테이블 상태 업데이트
                         cursor.execute(query_update, (subscription['id'],))
-                        print(f"Processed subscription ID: {subscription['id']}")  # 로그 출력
+                        logger.info(f"Processed subscription ID: {subscription['id']}")
                     except Exception as e:
-                        print(f"Error processing subscription ID {subscription['id']}: {e}")
+                        logger.error(f"Error processing subscription ID {subscription['id']}: {e}")
                         continue
 
                 # 4. 변경사항 커밋
                 connection.commit()
+                logger.info("All subscriptions processed successfully.")
     except Exception as e:
-        print(f"Error moving subscriptions to ownerships: {e}")
-
+        logger.error(f"Error moving subscriptions to ownerships: {e}")
 
 # 스케줄러 작업 추가
 if not scheduler.get_jobs():
@@ -137,6 +218,7 @@ async def startup_event():
     """
     if scheduler.state != STATE_RUNNING:  
         scheduler.start()
+        logger.info("Scheduler started.")
 
 @router.on_event("shutdown")
 async def shutdown_event():
@@ -145,3 +227,4 @@ async def shutdown_event():
     """
     if scheduler.state == STATE_RUNNING:
         scheduler.shutdown()
+        logger.info("Scheduler shut down.")
