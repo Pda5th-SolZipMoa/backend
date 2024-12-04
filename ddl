@@ -23,10 +23,9 @@ CREATE TABLE Property_Detail (
     PRIMARY KEY (id)
 ) COMMENT='건물 매물 정보';
 
-CREATE TABLE Building (
+CREATE TABLE Properties (
     id BIGINT NOT NULL COMMENT '건물id',
     name VARCHAR(100) NOT NULL COMMENT '건물이름',
-    token_supply INT NOT NULL COMMENT '건물에 할당된 총 토큰 수',
     created_at DATETIME NOT NULL COMMENT '건물등록시간',
     price FLOAT NULL COMMENT '최근 거래된 가격',
     address VARCHAR(100) NOT NULL COMMENT '건물실주소',
