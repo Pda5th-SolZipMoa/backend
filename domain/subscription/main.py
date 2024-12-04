@@ -67,7 +67,9 @@ async def subscribe(request: OwnershipRequest, jwt: Request):
                     if not result:
                         raise HTTPException(status_code=404, detail="사용자 정보 없음")
 
-                    total_balance, orderable_balance = result
+                    # 타입 변환
+                    total_balance, orderable_balance = map(float, result)
+
                     if total_balance < total_cost or orderable_balance < total_cost:
                         raise HTTPException(status_code=400, detail="잔액 부족")
 
