@@ -43,49 +43,6 @@ async def subscribe(request: OwnershipRequest, jwt: Request):
 
     total_cost = request.buy_price * request.quantity
 
-    def check_and_update_user_balance():
-        """
-        사용자의 잔액을 확인하고 주문 가능 금액과 보유 금액을 감소시킴
-        """
-        select_query = """
-            SELECT total_balance, orderable_balance
-            FROM Users
-            WHERE id = %s
-        """
-        update_query = """
-            UPDATE Users
-            SET total_balance = total_balance - %s,
-                orderable_balance = orderable_balance - %s
-            WHERE id = %s
-        """
-        try:
-            with get_db_connection() as connection:
-                with connection.cursor() as cursor:
-                    # 1. 사용자 잔액 확인
-                    cursor.execute(select_query, (user_id,))
-                    result = cursor.fetchone()
-
-                    # 2. 결과 데이터 검증
-                    if not result or len(result) != 2:
-                        raise HTTPException(status_code=404, detail="사용자 정보 없음")
-
-                    # 3. 데이터 추출 및 타입 검증
-                    total_balance, orderable_balance = result
-
-                    if not isinstance(total_balance, int) or not isinstance(orderable_balance, int):
-                        raise HTTPException(status_code=500, detail="잔액 필드의 데이터 타입 오류")
-
-                    # 4. 잔액 비교
-                    if total_balance < total_cost or orderable_balance < total_cost:
-                        raise HTTPException(status_code=400, detail="잔액 부족")
-
-                    # 5. 사용자 잔액 업데이트
-                    cursor.execute(update_query, (total_cost, total_cost, user_id))
-                    connection.commit()
-
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"잔액 업데이트 실패: {e}")
-
     def insert_subscription():
         """
         Subscriptions 테이블에 청약 데이터 삽입
@@ -111,9 +68,6 @@ async def subscribe(request: OwnershipRequest, jwt: Request):
             raise HTTPException(status_code=500, detail=f"Database insertion failed: {e}")
 
     try:
-        # 1. 사용자 잔액 확인 및 업데이트
-        await run_in_threadpool(check_and_update_user_balance)
-
         # 2. 청약 데이터 삽입
         subscription_id = await run_in_threadpool(insert_subscription)
 
