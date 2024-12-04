@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime,timedelta
 from pymysql import connect
 from core.mysql_connector import get_db_connection
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
@@ -87,7 +87,7 @@ async def create_property(
         maintenance_cost: str = Form(...),
         token_supply: int = Form(...),
         token_cost: int = Form(...),
-        period: str = Form(...),
+        #period: str = Form(...),
 ):
     # JWT에서 유저 ID 추출
     token = request.cookies.get("access_token")
@@ -102,6 +102,13 @@ async def create_property(
     # owner_id를 인증된 사용자 ID로 설정
     owner_id = user_id
 
+    #period 현재시간 - 현재시간+3분 설정
+    current_time = datetime.now()
+    future_time = current_time+timedelta(minutes=3)
+
+    current_time_str = current_time.strftime("%Y.%m.%d")
+    future_time_str = future_time.strftime("%Y.%m.%d %H:%M:%S")
+    period = current_time_str +"-"+ future_time_str
     if not legalNotice:
         raise HTTPException(status_code=400, detail="이용 약관에 동의해야 합니다.")
 
