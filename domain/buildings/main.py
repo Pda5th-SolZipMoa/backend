@@ -31,6 +31,7 @@ class BuildingResponse(BaseModel):
     photos: List[PhotoResponse]
     lat: float
     lng: float
+    status: Optional[str] 
 
 # 엔드포인트 정의
 @router.get("/buildings", response_model=List[BuildingResponse])
@@ -51,6 +52,7 @@ async def get_buildings_with_photos():
                 p.building_code,
                 p.lat,
                 p.lng,
+                p.status,
                 p.property_photo AS photo_url  -- 대표 사진을 가져옴
             FROM 
                 Properties p
@@ -90,6 +92,8 @@ async def get_buildings_with_photos():
                     "lat": row["lat"],
                     "lng": row["lng"],
                     "photos": [],
+                    "status": row["status"],  # 올바르게 row["status"]로 변경
+
                 }
 
             # 대표 사진 추가
