@@ -22,7 +22,11 @@ async def get_property_details(property_id: int):
                 id AS room_id,
                 detail_floor,
                 maintenance_cost,
-                home_size
+                home_size,
+                token_supply,
+                token_cost,
+                period,
+                subscription_status
             FROM Property_Detail
             WHERE property_id = %s
             """,
@@ -41,6 +45,10 @@ async def get_property_details(property_id: int):
                 "detail_floor": row[1],
                 "maintenance_cost": row[2],
                 "home_size": row[3],
+                "token_supply": row[4], 
+                "token_cost": row[5],
+                "period": row[6],
+                "subscription_status": row[7]
             }
             for row in results
         ]
