@@ -41,7 +41,7 @@ async def get_user_order_archives(
                     b.name AS building_name
                 FROM Order_Archive oa
                 LEFT JOIN Property_Detail pd ON oa.property_detail_id = pd.id
-                LEFT JOIN Building b ON pd.property_id = b.id
+                LEFT JOIN Properties b ON pd.property_id = b.id
                 WHERE oa.user_id = %s AND oa.status = %s
                 ORDER BY oa.created_at DESC
                 """,
@@ -61,7 +61,7 @@ async def get_user_order_archives(
                     b.name AS building_name
                 FROM Order_Archive oa
                 LEFT JOIN Property_Detail pd ON oa.property_detail_id = pd.id
-                LEFT JOIN Building b ON pd.property_id = b.id
+                LEFT JOIN Properties b ON pd.property_id = b.id
                 WHERE oa.user_id = %s
                 ORDER BY oa.created_at DESC
                 """,

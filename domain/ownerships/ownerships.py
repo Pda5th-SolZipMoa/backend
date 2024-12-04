@@ -41,7 +41,7 @@ async def get_user_ownerships(request: Request):
                 ) AS latest_price
             FROM Ownerships o
             JOIN Property_Detail pd ON o.property_detail_id = pd.id
-            JOIN Building b ON pd.property_id = b.id
+            JOIN Properties b ON pd.property_id = b.id
             WHERE o.user_id = %s
             """,
             (user_id,)
