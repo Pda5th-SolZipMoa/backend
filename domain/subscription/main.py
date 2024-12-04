@@ -152,79 +152,63 @@ logger = logging.getLogger(__name__)
 # 스케줄러 초기화
 scheduler = BackgroundScheduler()
 
-def move_subscriptions_to_ownerships():
+async def move_subscriptions_to_ownerships(interval: int = 60):
     """
-    청약 종료일에 도달한 데이터 중 'pending' 상태인 항목만 Ownerships 테이블로 이동
+    주기적으로 Subscriptions 데이터를 확인하고 Ownerships로 이동.
     """
-    query_select = """
-        SELECT id, user_id, property_detail_id, quantity, price_per_token
-        FROM Subscriptions
-        WHERE subscription_end_date <= NOW() AND status = 'pending'
-    """
-    query_insert = """
-        INSERT INTO Ownerships (user_id, property_detail_id, quantity, tradeable_tokens, buy_price, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """
-    query_update = """
-        UPDATE Subscriptions
-        SET status = 'fulfilled'
-        WHERE id = %s
-    """
-    try:
-        logger.info("Starting to process subscriptions...")
-        with get_db_connection() as connection:
-            with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-                # 1. 청약 종료일에 도달하고 상태가 'pending'인 데이터 조회
-                cursor.execute(query_select)
-                subscriptions = cursor.fetchall()
+    while True:
+        try:
+            logging.info("Checking for subscriptions to move to ownerships...")
+            with get_db_connection() as connection:
+                with connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                    # 1. 'pending' 상태의 청약 데이터를 조회
+                    query_select = """
+                        SELECT id, user_id, property_detail_id, quantity, price_per_token
+                        FROM Subscriptions
+                        WHERE subscription_end_date <= NOW() AND status = 'pending'
+                    """
+                    cursor.execute(query_select)
+                    subscriptions = cursor.fetchall()
 
-                logger.info(f"Found {len(subscriptions)} subscriptions to process.")
+                    if not subscriptions:
+                        logging.info("No subscriptions to process.")
+                    else:
+                        for subscription in subscriptions:
+                            try:
+                                # 2. Ownerships 테이블로 데이터 이동
+                                query_insert = """
+                                    INSERT INTO Ownerships (user_id, property_detail_id, quantity, tradeable_tokens, buy_price, created_at)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                """
+                                cursor.execute(
+                                    query_insert,
+                                    (
+                                        subscription['user_id'],
+                                        subscription['property_detail_id'],
+                                        subscription['quantity'],
+                                        subscription['quantity'],  # tradeable_tokens
+                                        subscription['price_per_token'],
+                                        datetime.now(),  # Python에서 현재 시간 추가
+                                    ),
+                                )
 
-                for subscription in subscriptions:
-                    try:
-                        # 2. Ownerships 테이블로 데이터 이동
-                        cursor.execute(
-                            query_insert,
-                            (
-                                subscription['user_id'],
-                                subscription['property_detail_id'],
-                                subscription['quantity'],
-                                subscription['quantity'],  # tradeable_tokens
-                                subscription['price_per_token'],
-                                datetime.now(),  # Python에서 현재 시간 추가
-                            ),
-                        )
-                        # 3. Subscriptions 테이블 상태 업데이트
-                        cursor.execute(query_update, (subscription['id'],))
-                        logger.info(f"Processed subscription ID: {subscription['id']}")
-                    except Exception as e:
-                        logger.error(f"Error processing subscription ID {subscription['id']}: {e}")
-                        continue
+                                # 3. Subscriptions 상태 업데이트
+                                query_update = """
+                                    UPDATE Subscriptions
+                                    SET status = 'fulfilled'
+                                    WHERE id = %s
+                                """
+                                cursor.execute(query_update, (subscription['id'],))
+                                logging.info(f"Processed subscription ID: {subscription['id']}")
+                            except Exception as e:
+                                logging.error(f"Error processing subscription ID {subscription['id']}: {e}")
+                                continue
 
-                # 4. 변경사항 커밋
-                connection.commit()
-                logger.info("All subscriptions processed successfully.")
-    except Exception as e:
-        logger.error(f"Error moving subscriptions to ownerships: {e}")
+                        # 4. 변경사항 커밋
+                        connection.commit()
+                        logging.info("All subscriptions processed successfully.")
+        except Exception as e:
+            logging.error(f"Error in move_subscriptions_to_ownerships: {e}")
 
-# 스케줄러 작업 추가
-if not scheduler.get_jobs():
-    scheduler.add_job(move_subscriptions_to_ownerships, 'interval', hours=24)  
-
-@router.on_event("startup")
-async def startup_event():
-    """
-    FastAPI 앱 시작 시 스케줄러를 시작
-    """
-    if scheduler.state != STATE_RUNNING:  
-        scheduler.start()
-        logger.info("Scheduler started.")
-
-@router.on_event("shutdown")
-async def shutdown_event():
-    """
-    FastAPI 앱 종료 시 스케줄러를 종료
-    """
-    if scheduler.state == STATE_RUNNING:
-        scheduler.shutdown()
-        logger.info("Scheduler shut down.")
+        # 5. 주기적으로 실행
+        await asyncio.sleep(interval)

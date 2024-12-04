@@ -16,7 +16,7 @@ from domain.order.order_cancel import router as order_cancel_router
 from domain.order.order_socket import router as order_socket_router
 from domain.order.order_matching_scheduler import periodic_matching
 from domain.buildings.main import router as buildings_router
-
+from domain.subscription.main import move_subscriptions_to_ownerships
 from domain.side_detail.chatgpt import router as gpt_router
 from domain.side_detail.newssection import router as news_router
 from domain.side_detail.discussion import router as discussion_router
@@ -76,6 +76,8 @@ async def startup_event():
     loop.create_task(redis_listener())
     # 스케줄러 실행
     loop.create_task(periodic_matching(interval=300))
+    # 청약 처리 작업 실행
+    loop.create_task(move_subscriptions_to_ownerships(interval=60))
 
 
 @app.get("/")
