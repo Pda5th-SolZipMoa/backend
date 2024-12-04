@@ -61,21 +61,28 @@ async def subscribe(request: OwnershipRequest, jwt: Request):
         try:
             with get_db_connection() as connection:
                 with connection.cursor() as cursor:
-                    # 사용자 잔액 확인
+                    # 1. 사용자 잔액 확인
                     cursor.execute(select_query, (user_id,))
                     result = cursor.fetchone()
-                    if not result:
+
+                    # 2. 결과 데이터 검증
+                    if not result or len(result) != 2:
                         raise HTTPException(status_code=404, detail="사용자 정보 없음")
 
-                    # 타입 변환
-                    total_balance, orderable_balance = map(float, result)
+                    # 3. 데이터 추출 및 타입 검증
+                    total_balance, orderable_balance = result
 
+                    if not isinstance(total_balance, int) or not isinstance(orderable_balance, int):
+                        raise HTTPException(status_code=500, detail="잔액 필드의 데이터 타입 오류")
+
+                    # 4. 잔액 비교
                     if total_balance < total_cost or orderable_balance < total_cost:
                         raise HTTPException(status_code=400, detail="잔액 부족")
 
-                    # 사용자 잔액 업데이트
+                    # 5. 사용자 잔액 업데이트
                     cursor.execute(update_query, (total_cost, total_cost, user_id))
                     connection.commit()
+
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"잔액 업데이트 실패: {e}")
 
