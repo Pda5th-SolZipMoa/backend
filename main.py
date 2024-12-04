@@ -74,6 +74,7 @@ app.include_router(ownerships_router, prefix="/api/ownerships", tags=["ownership
 # 애플리케이션 시작 시 Redis Listener와 스케줄러 실행
 @app.on_event("startup")
 async def startup_event():
+    await asyncio.sleep(8)
     loop = asyncio.get_event_loop()
     # Redis Listener 실행
     loop.create_task(redis_listener())
