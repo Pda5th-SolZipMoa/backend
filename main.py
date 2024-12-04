@@ -23,7 +23,8 @@ from domain.side_detail.discussion import router as discussion_router
 # from domain.discussion.websocket import websocket_router
 from domain.properties.property_history import router as property_history_router
 from domain.archives.archives import router as archives_router
-from core.redis import redis_listener
+from domain.subscription.main import router as subscription_router 
+from core.redis import redis_listener 
 import asyncio
 
 import requests
@@ -64,8 +65,7 @@ app.include_router(order_socket_router, prefix="/api/ws/orders", tags=["order_so
 
 app.include_router(property_history_router, prefix="/api/properties", tags=["property_history_router"])
 app.include_router(order_balance_router, prefix="/api/users", tags=["order_balance_router"])
-app.include_router(ownerships_router, prefix="/api/ownerships", tags=["ownerships_router"])
-
+app.include_router(subscription_router, prefix="/api/subscriptions", tags=["subscriptions"])
 app.include_router(archives_router, prefix="/api/order_archives", tags=["archives_router"])
 
 # 애플리케이션 시작 시 Redis Listener와 스케줄러 실행

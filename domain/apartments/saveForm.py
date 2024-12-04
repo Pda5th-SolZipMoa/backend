@@ -17,7 +17,7 @@ load_dotenv()
 SERVICE_KEY = os.getenv("PUBLIC_DATA_API_KEY")
 
 # API basic URL
-BUILDING_BASE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo"
+BUILDING_BASE_URL = "http://apis.data.go.kr/1613000/BldRgstHubService/getBrRecapTitleInfo"
 
 # Data model for building information
 class BuildingInfo(BaseModel):
