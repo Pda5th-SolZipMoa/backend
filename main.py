@@ -27,6 +27,8 @@ from domain.archives.archives import router as archives_router
 from domain.subscription.main import router as subscription_router 
 from core.redis import redis_listener 
 import asyncio
+from starlette.middleware.base import BaseHTTPMiddleware
+import httpx
 
 import requests
 import os
@@ -41,6 +43,22 @@ app.add_middleware(
     allow_methods=["*"],  # 모든 HTTP 메서드 허용
     allow_headers=["*"],  # 모든 HTTP 헤더 허용
 )
+
+
+# 요청 타임아웃 설정 미들웨어
+class TimeoutMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        try:
+            timeout = 8  # 타임아웃 시간 설정 (초)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                request.state.client = client
+                response = await call_next(request)
+                return response
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=408, detail="Request Timeout") from e
+
+# Middleware 추가
+app.add_middleware(TimeoutMiddleware)
 
 # 각 도메인의 라우터를 등록 예시
 # app.include_router(my_page_router.router, prefix="/api/mypage", tags=["mypage"])
