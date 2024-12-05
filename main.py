@@ -99,7 +99,7 @@ async def startup_event():
     # Redis Listener 실행
     loop.create_task(redis_listener())
     # 스케줄러 실행
-    loop.create_task(periodic_matching(interval=300))
+    loop.create_task(periodic_matching(interval=100))
     # 청약 처리 작업 실행
     loop.create_task(move_subscriptions_to_ownerships(interval=60))
 
