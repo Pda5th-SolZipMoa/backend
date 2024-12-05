@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -44,18 +44,20 @@ app.add_middleware(
     allow_headers=["*"],  # 모든 HTTP 헤더 허용
 )
 
-
-# 요청 타임아웃 설정 미들웨어
 class TimeoutMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
+    async def dispatch(self, request: Request, call_next):
         try:
             timeout = 8  # 타임아웃 시간 설정 (초)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                request.state.client = client
-                response = await call_next(request)
-                return response
+            # httpx.AsyncClient를 request.state에 저장
+            request.state.client = httpx.AsyncClient(timeout=timeout)
+            response = await call_next(request)
         except httpx.RequestError as e:
+            # 타임아웃 에러 처리
             raise HTTPException(status_code=408, detail="Request Timeout") from e
+        finally:
+            # 클라이언트 종료
+            await request.state.client.aclose()
+        return response
 
 # Middleware 추가
 app.add_middleware(TimeoutMiddleware)
